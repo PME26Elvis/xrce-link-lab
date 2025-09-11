@@ -197,3 +197,37 @@ jobs:
             agent.log
             pub.out
             sub.out
+  agent-serial-pty:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            git cmake build-essential libasio-dev libtinyxml2-dev
+
+      - name: Build & install Micro XRCE-DDS Agent
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/eProsima/Micro-XRCE-DDS-Agent.git
+          cd Micro-XRCE-DDS-Agent && mkdir build && cd build
+          cmake ..
+          make -j"$(nproc)"
+          sudo make install
+          sudo ldconfig
+
+      - name: Run Renode serial PTY bridge test (Robot)
+        uses: antmicro/renode-test-action@v4
+        with:
+          renode-revision: master
+          tests-to-run: tests/serial_pty.robot
+          artifacts-path: artifacts/serial_pty
+
+      - name: Upload serial-pty artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: serial-pty-logs
+          path: artifacts/serial_pty/**
