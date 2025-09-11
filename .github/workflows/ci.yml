@@ -148,6 +148,7 @@ jobs:
 
       - name: Build & install Micro XRCE-DDS Agent (per docs)
         run: |
+          set -euo pipefail
           git clone --depth 1 https://github.com/eProsima/Micro-XRCE-DDS-Agent.git
           cd Micro-XRCE-DDS-Agent && mkdir build && cd build
           cmake ..
@@ -155,50 +156,44 @@ jobs:
           sudo make install
           sudo ldconfig
 
-      - name: Launch Agent (udp4:2019) in background
-        run: |
-          set -euo pipefail
-          timeout 15s MicroXRCEAgent udp4 -p 2019 --verbose 4 > agent.log 2>&1 &
-          echo $! > agent.pid
-          # 稍等 Agent 起來
-          sleep 0.8
-          ss -lun | grep -q ':2019' || (echo "Agent UDP 2019 not bound" && cat agent.log && exit 1)
-
       - name: Build Micro XRCE-DDS Client examples (per docs)
         run: |
+          set -euo pipefail
           git clone --depth 1 https://github.com/eProsima/Micro-XRCE-DDS-Client.git
           cd Micro-XRCE-DDS-Client && mkdir build && cd build
           cmake .. -DUCLIENT_BUILD_EXAMPLES=ON
           make -j"$(nproc)"
+          test -x examples/PublishHelloWorld/PublishHelloWorldClient
+          test -x examples/SubscribeHelloWorld/SubscribeHelloWorldClient
 
-      - name: Run Subscriber then Publisher against Agent (HelloWorld)
-        working-directory: Micro-XRCE-DDS-Client/build
+      - name: Run XRCE HelloWorld end-to-end (Agent + Pub + Sub, same step)
         run: |
           set -euo pipefail
-          # 背景啟動 Subscriber，等待訊息後自行退出
-          timeout 10s examples/SubscribeHelloWorld/SubscribeHelloWorldClient 127.0.0.1 2019 > ../../sub.out 2>&1 &
-          SUB_PID=$!
-          # 等待 subscriber 完成初始化
+          # 啟動 Agent（UDP 2019，官方 quickstart）
+          MicroXRCEAgent udp4 -p 2019 --verbose 4 > agent.log 2>&1 &
+          AG_PID=$!
           sleep 0.8
-          # 啟動 Publisher（單次發佈並退出）
-          timeout 6s examples/PublishHelloWorld/PublishHelloWorldClient 127.0.0.1 2019 > ../../pub.out 2>&1
-          # 等待 Subscriber 結束（若已收訊息通常會正常退出）
-          wait $SUB_PID || true
+          ss -lun | grep -q ':2019' || (echo "Agent UDP 2019 not bound"; cat agent.log; exit 1)
 
-      - name: Teardown Agent and collect logs
-        if: always()
-        run: |
-          if [ -f agent.pid ]; then kill $(cat agent.pid) 2>/dev/null || true; fi
-          sleep 0.3
-          # 將 log/輸出收集成 artifacts
-          mkdir -p artifacts/xrce-helloworld
-          mv agent.log artifacts/xrce-helloworld/ || true
-          mv sub.out pub.out artifacts/xrce-helloworld/ || true
+          # 先跑 Publisher（官方建議先 Publisher），背景跑幾秒讓 Subscriber 有資料可收
+          timeout 6s Micro-XRCE-DDS-Client/build/examples/PublishHelloWorld/PublishHelloWorldClient 127.0.0.1 2019 > pub.out 2>&1 &
+          PUB_PID=$!
+          sleep 0.5
+
+          # 再跑 Subscriber（等待不超過 8 秒）
+          timeout 8s Micro-XRCE-DDS-Client/build/examples/SubscribeHelloWorld/SubscribeHelloWorldClient 127.0.0.1 2019 > sub.out 2>&1 || true
+
+          # 確保 publisher 結束、清理 agent
+          wait $PUB_PID || true
+          kill $AG_PID 2>/dev/null || true
+          sleep 0.2
 
       - name: Upload XRCE HelloWorld artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: xrce-helloworld-logs
-          path: artifacts/xrce-helloworld/**
-
+          path: |
+            agent.log
+            pub.out
+            sub.out
