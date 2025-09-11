@@ -318,3 +318,25 @@ jobs:
         with:
           name: xrce-helloworld-netem-logs
           path: artifacts/xrce-helloworld-netem/**
+  zephyr-build-baseline:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Zephyr (SDK + west workspace)
+        uses: zephyrproject-rtos/action-zephyr-setup@v1
+        with:
+          app-path: app
+          toolchains: arm-zephyr-eabi
+          sdk-version: 0.16.3
+
+      - name: Build Zephyr app for nRF52840 DK
+        run: |
+          west build app -b nrf52840dk_nrf52840
+
+      - name: Upload Zephyr ELF
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zephyr-baseline-elf
+          path: build/zephyr/zephyr.elf
