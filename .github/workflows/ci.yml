@@ -384,6 +384,10 @@ jobs:
       - name: West update (fetch micro-ROS module)
         run: |
           west update
+          
+      - name: Prefetch micro-ROS sources (uros.repos)
+        run: |
+          make -f modules/libmicroros/libmicroros.mk download
 
       - name: Build micro-ROS sample app (native_posix)
         run: |
@@ -453,6 +457,10 @@ jobs:
 
       - name: West update (fetch micro-ROS module)
         run: west update
+        
+      - name: Prefetch micro-ROS sources (uros.repos)
+        run: |
+          make -f modules/libmicroros/libmicroros.mk download
 
       - name: Build micro-ROS app (native_posix / host-udp)
         run: |
