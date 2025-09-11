@@ -9,15 +9,16 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
-      - name: Run Renode Robot tests
+      - name: Run Renode smoke test
         uses: antmicro/renode-test-action@v4
         with:
-          renode-revision: 'master'
-          tests-to-run: 'tests/smoke.robot'
+          renode-revision: master
+          tests-to-run: tests/smoke.robot
 
   agent-build:
     runs-on: ubuntu-22.04
     steps:
+      - uses: actions/checkout@v4
       - name: Install deps
         run: |
           sudo apt-get update
@@ -32,24 +33,14 @@ jobs:
           sudo make install
           sudo ldconfig
       - name: Sanity check Agent CLI
-        run: |
-          MicroXRCEAgent --help | head -n 30
+        run: MicroXRCEAgent --help | head -n 30
 
   renode-multinode:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
-
-      - name: Run Renode 2-node BLE demo (Robot)
+      - name: Run Renode Quark 2-node demo
         uses: antmicro/renode-test-action@v4
         with:
-          renode-revision: 'master'
-          tests-to-run: 'tests/multinode.robot'
-          artifacts-path: 'artifacts'   # 將 Robot 輸出集中到 ./artifacts
-
-      - name: Upload Robot reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: renode-multinode-reports
-          path: artifacts/**
+          renode-revision: master
+          tests-to-run: tests/multinode.robot
