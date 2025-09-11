@@ -322,28 +322,59 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
-
-      # 官方 Zephyr Action：會安裝 SDK、初始化 west 工作區（依 app/west.yml）
+  
+      # 安裝 Zephyr SDK 與建立 west 工作區（依 app/west.yml）
       - name: Setup Zephyr (SDK + west workspace)
         uses: zephyrproject-rtos/action-zephyr-setup@v1
         with:
           app-path: app
           toolchains: arm-zephyr-eabi
           sdk-version: 0.16.3
-
-      # 建置（依官方建議語法）：來源就是 app/；明確指定板子
+  
+      # 明確同步所有模組並匯出環境
+      - name: West update & export
+        run: |
+          set -euo pipefail
+          west update
+          west zephyr-export
+          west list
+  
+      # 安裝 Zephyr 的 Python 需求（避免缺套件）
+      - name: Python deps for Zephyr
+        run: |
+          set -euo pipefail
+          python3 -m pip install --upgrade pip
+          pip3 install -r zephyr/scripts/requirements.txt
+  
+      # 事前自檢：板子目錄與 'west boards' 清單都要能找到 nrf52840dk_nrf52840
+      - name: Verify board availability
+        run: |
+          set -euo pipefail
+          test -d zephyr/boards/arm/nrf52840dk_nrf52840 || {
+            echo "[ERROR] Board dir zephyr/boards/arm/nrf52840dk_nrf52840 not found."
+            echo "== Boards tree snapshot =="
+            find zephyr/boards -maxdepth 2 -type d | head -n 200 || true
+            exit 1
+          }
+          west boards | grep -q '^nrf52840dk_nrf52840$' || {
+            echo "[ERROR] 'west boards' does not list nrf52840dk_nrf52840."
+            echo "== First 200 boards =="
+            west boards | head -n 200 || true
+            exit 1
+          }
+  
+      # 建置（詳細輸出；失敗時印出 CMake 日誌以利診斷）
       - name: Build Zephyr app for nRF52840 DK
         run: |
           set -euo pipefail
-          west list
-          west build -b nrf52840dk_nrf52840 app || {
+          west build -s app -b nrf52840dk_nrf52840 build --pristine always -v || {
             echo "=== CMake logs (if any) ==="
             find build -name CMakeError.log -print -exec sed -n '1,200p' {} \; || true
             find build -name CMakeOutput.log -print -exec sed -n '1,200p' {} \; || true
             exit 1
           }
-
-      # 上傳成果；即使沒有檔也不要讓這步驟變成失敗的原因
+  
+      # 上傳成果與紀錄（就算沒檔也別讓上傳步驟造成失敗）
       - name: Upload Zephyr build artifacts
         if: always()
         uses: actions/upload-artifact@v4
