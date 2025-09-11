@@ -376,10 +376,10 @@ jobs:
           toolchains: arm-zephyr-eabi
           sdk-version: 0.16.3
 
-      - name: Install micro-ROS build deps (per module README)
+      - name: Install micro-ROS build deps
         run: |
-          python3 -m pip install --upgrade pip
-          pip3 install catkin_pkg lark-parser empy colcon-common-extensions vcstool pyyaml ament_package
+          python3 -m pip install --upgrade pip setuptools wheel
+          pip3 install colcon-common-extensions empy lark-parser catkin_pkg vcstool PyYAML ament-package
 
       - name: West update (fetch micro-ROS module)
         run: |
@@ -452,9 +452,8 @@ jobs:
 
       - name: Install micro-ROS build deps
         run: |
-          python3 -m pip install --upgrade pip
-          pip3 install catkin_pkg lark-parser empy colcon-common-extensions vcstool pyyaml ament_package
-
+          python3 -m pip install --upgrade pip setuptools wheel
+          pip3 install colcon-common-extensions empy lark-parser catkin_pkg vcstool PyYAML ament-package
       - name: West update (fetch micro-ROS module)
         run: west update
         
