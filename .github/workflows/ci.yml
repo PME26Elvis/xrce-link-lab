@@ -387,8 +387,8 @@ jobs:
 
       - name: Build micro-ROS sample app (native_posix)
         run: |
-          # 直接以 micro-ROS 模組中的範例 app 當 Zephyr 應用程式
-          west build modules/libmicroros -b native_posix --pristine always
+          west build modules/libmicroros -b native_posix --pristine always -- \
+            -DDTC_OVERLAY_FILE="$GITHUB_WORKSPACE/app/empty.overlay"
 
       - name: Upload micro-ROS (native_posix) artifacts
         if: always()
