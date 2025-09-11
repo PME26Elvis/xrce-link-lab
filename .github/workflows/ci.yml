@@ -390,6 +390,25 @@ jobs:
           west build modules/libmicroros -b native_posix --pristine always -- \
             -DCONF_FILE="$GITHUB_WORKSPACE/modules/libmicroros/host-udp.conf" \
             -DDTC_OVERLAY_FILE="$GITHUB_WORKSPACE/app/empty.overlay"
+      - name: Inspect merged Kconfig (micro-ROS / transport)
+        if: always()
+        run: |
+          if [ -f build/zephyr/.config ]; then
+            echo "==== micro-ROS related Kconfig ===="
+            grep -E "MICRO|UROS|RMW|TRANSPORT|UDP|SERIAL" build/zephyr/.config || true
+            echo "==================================="
+          else
+            echo "build/zephyr/.config not found (configure may have failed earlier)."
+          fi
+
+      - name: Upload merged .config (debug)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: microros-native-posix-config
+          path: build/zephyr/.config
+          if-no-files-found: warn
+            
       - name: Upload micro-ROS (qemu) artifacts
         if: always()
         uses: actions/upload-artifact@v4
