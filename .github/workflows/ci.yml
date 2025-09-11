@@ -135,4 +135,70 @@ jobs:
           ss -ptn | grep -E ':8888\s' || true
           # 等待 Agent 結束（timeout 會 kill）
           wait $AG_PID || true
+  xrce-helloworld:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            git cmake build-essential libasio-dev libtinyxml2-dev iproute2
+
+      - name: Build & install Micro XRCE-DDS Agent (per docs)
+        run: |
+          git clone --depth 1 https://github.com/eProsima/Micro-XRCE-DDS-Agent.git
+          cd Micro-XRCE-DDS-Agent && mkdir build && cd build
+          cmake ..
+          make -j"$(nproc)"
+          sudo make install
+          sudo ldconfig
+
+      - name: Launch Agent (udp4:2019) in background
+        run: |
+          set -euo pipefail
+          timeout 15s MicroXRCEAgent udp4 -p 2019 --verbose 4 > agent.log 2>&1 &
+          echo $! > agent.pid
+          # 稍等 Agent 起來
+          sleep 0.8
+          ss -lun | grep -q ':2019' || (echo "Agent UDP 2019 not bound" && cat agent.log && exit 1)
+
+      - name: Build Micro XRCE-DDS Client examples (per docs)
+        run: |
+          git clone --depth 1 https://github.com/eProsima/Micro-XRCE-DDS-Client.git
+          cd Micro-XRCE-DDS-Client && mkdir build && cd build
+          cmake .. -DUCLIENT_BUILD_EXAMPLES=ON
+          make -j"$(nproc)"
+
+      - name: Run Subscriber then Publisher against Agent (HelloWorld)
+        working-directory: Micro-XRCE-DDS-Client/build
+        run: |
+          set -euo pipefail
+          # 背景啟動 Subscriber，等待訊息後自行退出
+          timeout 10s examples/SubscribeHelloWorld/SubscribeHelloWorldClient 127.0.0.1 2019 > ../../sub.out 2>&1 &
+          SUB_PID=$!
+          # 等待 subscriber 完成初始化
+          sleep 0.8
+          # 啟動 Publisher（單次發佈並退出）
+          timeout 6s examples/PublishHelloWorld/PublishHelloWorldClient 127.0.0.1 2019 > ../../pub.out 2>&1
+          # 等待 Subscriber 結束（若已收訊息通常會正常退出）
+          wait $SUB_PID || true
+
+      - name: Teardown Agent and collect logs
+        if: always()
+        run: |
+          if [ -f agent.pid ]; then kill $(cat agent.pid) 2>/dev/null || true; fi
+          sleep 0.3
+          # 將 log/輸出收集成 artifacts
+          mkdir -p artifacts/xrce-helloworld
+          mv agent.log artifacts/xrce-helloworld/ || true
+          mv sub.out pub.out artifacts/xrce-helloworld/ || true
+
+      - name: Upload XRCE HelloWorld artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xrce-helloworld-logs
+          path: artifacts/xrce-helloworld/**
 
