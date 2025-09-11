@@ -419,3 +419,72 @@ jobs:
             build/zephyr/.config
             build/zephyr/zephyr.dts
           if-no-files-found: warn
+  microros-hostudp-e2e:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Agent deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends git cmake build-essential libasio-dev libtinyxml2-dev
+
+      - name: Build & install Micro XRCE-DDS Agent
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/eProsima/Micro-XRCE-DDS-Agent.git
+          cd Micro-XRCE-DDS-Agent && mkdir build && cd build
+          cmake ..
+          make -j"$(nproc)"
+          sudo make install
+          sudo ldconfig
+
+      - name: Setup Zephyr (SDK + west workspace)
+        uses: zephyrproject-rtos/action-zephyr-setup@v1
+        with:
+          app-path: app
+          toolchains: arm-zephyr-eabi
+          sdk-version: 0.16.3
+
+      - name: Install micro-ROS build deps
+        run: |
+          python3 -m pip install --upgrade pip
+          pip3 install catkin_pkg lark-parser empy colcon-common-extensions
+
+      - name: West update (fetch micro-ROS module)
+        run: west update
+
+      - name: Build micro-ROS app (native_posix / host-udp)
+        run: |
+          west build modules/libmicroros -b native_posix --pristine always -- \
+            -DCONF_FILE="$GITHUB_WORKSPACE/modules/libmicroros/host-udp.conf" \
+            -DDTC_OVERLAY_FILE="$GITHUB_WORKSPACE/app/empty.overlay"
+
+      - name: Run Agent (udp4:8888) and app, collect logs
+        run: |
+          set -euo pipefail
+          # 1) 啟動 Agent（官方 README 也示範 udp4 8888）
+          MicroXRCEAgent udp4 -p 8888 -v 6 > agent.log 2>&1 &
+          AG_PID=$!
+          sleep 0.8
+
+          # 2) 確認 8888/udp 綁定
+          ss -lun | grep -q ':8888' || (echo "Agent did not bind 8888/udp"; cat agent.log; exit 1)
+
+          # 3) 跑 native_posix 可執行檔（timeout 讓 CI 不會卡死）
+          timeout 10s ./build/zephyr/zephyr.exe > app.out 2>&1 || true
+
+          # 4) 收尾
+          kill $AG_PID 2>/dev/null || true
+          sleep 0.2
+
+      - name: Upload E2E artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: microros-hostudp-e2e
+          path: |
+            agent.log
+            app.out
+            build/zephyr/.config
+          if-no-files-found: warn
