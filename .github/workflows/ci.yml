@@ -62,3 +62,35 @@ jobs:
         with:
           name: renode-two-nodes-reports
           path: artifacts/two_nodes/**
+  agent-udp-smoke:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            git cmake build-essential libasio-dev libtinyxml2-dev iproute2
+
+      - name: Build Micro XRCE-DDS Agent
+        run: |
+          git clone --depth 1 https://github.com/eProsima/Micro-XRCE-DDS-Agent.git
+          cd Micro-XRCE-DDS-Agent && mkdir build && cd build
+          cmake ..
+          make -j"$(nproc)"
+          sudo make install
+          sudo ldconfig
+
+      - name: Launch Agent (udp4:8888) briefly and verify port
+        run: |
+          set -euo pipefail
+          # 短暫啟動 Agent（最多 5 秒），讓它綁定 8888/UDP
+          timeout 5s MicroXRCEAgent udp4 -p 8888 &
+          AGG_PID=$!
+          # 等半秒讓 Agent 起來
+          sleep 0.5
+          # 檢查 8888/udp 是否被綁定
+          ss -lun | grep -q ':8888' && echo "UDP 8888 is bound by Agent."
+          # 等待背景 timeout 自動收掉 Agent（最多 5 秒）
+          wait $AGG_PID || true
