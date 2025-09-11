@@ -1,0 +1,3 @@
+:name: XRCE-Link-Lab QuarkC1000 Multinode Demo
+:description: Use Renode's built-in Quark C1000 Zephyr multi-node demo with hosted binaries
+include @scripts/many-nodes/quark-c1000-zephyr/demo.resc
