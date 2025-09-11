@@ -1,28 +1,23 @@
 *** Settings ***
-Suite Setup     Setup
-Suite Teardown  Teardown
-Test Teardown   Test Teardown
-Resource        ${RENODEKEYWORDS}
+Resource            ${RENODEKEYWORDS}
+Suite Setup         Setup
+Test Setup          Test Setup
+Test Teardown       Test Teardown
 
 *** Variables ***
-${DEFAULT_UART_TIMEOUT}    90
+${RESC}             @scripts/two-nodes/nrf52-dual-demo.resc
+${PROMPT}           uart:~$
 
 *** Test Cases ***
 NRF Two-Node Zephyr Shell Prompts Appear
-    # 載入我們的兩節點腳本（不自動 start）
-    Execute Command    include @${CURDIR}/../renode/two_nodes_nrf.resc
+    [Documentation] 確認兩台模擬的 nRF 節點都能跑起 Zephyr shell，並各自出現提示字元。
+    Execute Command                 include ${RESC}
 
-    # 建立 nodeA 的 UART tester
-    Execute Command    mach set "nodeA"
-    ${uart_a}=    Create Terminal Tester    sysbus.uart0    timeout=${DEFAULT_UART_TIMEOUT}    defaultPauseEmulation=true
+    # 關鍵修正：在 Create Terminal Tester 時，明確指定 machine=nodeA / nodeB
+    ${uartA}=                       Create Terminal Tester    sysbus.uart0    machine=nodeA    timeout=10    defaultPauseEmulation=true
+    ${uartB}=                       Create Terminal Tester    sysbus.uart0    machine=nodeB    timeout=10    defaultPauseEmulation=true
 
-    # 建立 nodeB 的 UART tester
-    Execute Command    mach set "nodeB"
-    ${uart_b}=    Create Terminal Tester    sysbus.uart0    timeout=${DEFAULT_UART_TIMEOUT}    defaultPauseEmulation=true
-
-    # 啟動兩台機器
     Start Emulation
 
-    # 兩台都應該出現 Zephyr Shell 提示字串（官方示例使用的 prompt）
-    Wait For Prompt On Uart    uart:~$    testerId=${uart_a}
-    Wait For Prompt On Uart    uart:~$    testerId=${uart_b}
+    Wait For Prompt On Uart         ${PROMPT}    testerId=${uartA}
+    Wait For Prompt On Uart         ${PROMPT}    testerId=${uartB}
