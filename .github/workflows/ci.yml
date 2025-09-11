@@ -231,3 +231,70 @@ jobs:
         with:
           name: serial-pty-logs
           path: artifacts/serial_pty/**
+  xrce-helloworld-netem-100ms-1loss:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            git cmake build-essential libasio-dev libtinyxml2-dev iproute2
+          chmod +x tools/netem_profiles.sh
+
+      - name: Build & install Micro XRCE-DDS Agent
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/eProsima/Micro-XRCE-DDS-Agent.git
+          cd Micro-XRCE-DDS-Agent && mkdir build && cd build
+          cmake ..
+          make -j"$(nproc)"
+          sudo make install
+          sudo ldconfig
+
+      - name: Build Micro XRCE-DDS Client examples
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/eProsima/Micro-XRCE-DDS-Client.git
+          cd Micro-XRCE-DDS-Client && mkdir build && cd build
+          cmake .. -DUCLIENT_BUILD_EXAMPLES=ON
+          make -j"$(nproc)"
+
+      - name: Apply netem (100ms + 1% loss) and run XRCE HelloWorld end-to-end
+        run: |
+          set -euo pipefail
+          # 1) apply netem
+          echo "Applying netem profile delay100ms_loss1 on lo..."
+          sudo ./tools/netem_profiles.sh apply delay100ms_loss1
+          # 記錄目前 qdisc 設定
+          tc qdisc show dev lo | tee netem.txt
+
+          # 2) run Agent + Pub/Sub in the same shell
+          MicroXRCEAgent udp4 -p 2019 --verbose 4 > agent.log 2>&1 &
+          AG_PID=$!
+          sleep 0.8
+          ss -lun | grep -q ':2019' || (echo "Agent UDP 2019 not bound"; cat agent.log; exit 1)
+
+          timeout 8s Micro-XRCE-DDS-Client/build/examples/PublishHelloWorld/PublishHelloWorldClient 127.0.0.1 2019 > pub.out 2>&1 &
+          PUB_PID=$!
+          sleep 0.5
+          timeout 10s Micro-XRCE-DDS-Client/build/examples/SubscribeHelloWorld/SubscribeHelloWorldClient 127.0.0.1 2019 > sub.out 2>&1 || true
+
+          wait $PUB_PID || true
+          kill $AG_PID 2>/dev/null || true
+          sleep 0.2
+
+      - name: Clear netem and collect artifacts
+        if: always()
+        run: |
+          sudo ./tools/netem_profiles.sh clear
+          mkdir -p artifacts/xrce-helloworld-netem
+          mv agent.log pub.out sub.out netem.txt artifacts/xrce-helloworld-netem/ || true
+
+      - name: Upload XRCE HelloWorld (netem) artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xrce-helloworld-netem-logs
+          path: artifacts/xrce-helloworld-netem/**
