@@ -385,9 +385,11 @@ jobs:
         run: |
           west update
 
-      - name: Build micro-ROS sample app (QEMU Cortex-M3)
+      - name: Build micro-ROS sample app (native_posix)
         run: |
-          west build -b native_posix modules/libmicroros --pristine always -- -DCONF_FILE=modules/libmicroros/host-udp.conf
+          west build modules/libmicroros -b native_posix --pristine always -- \
+            -DCONF_FILE="$GITHUB_WORKSPACE/modules/libmicroros/host-udp.conf" \
+            -DDTC_OVERLAY_FILE="$GITHUB_WORKSPACE/app/empty.overlay"
       - name: Upload micro-ROS (qemu) artifacts
         if: always()
         uses: actions/upload-artifact@v4
