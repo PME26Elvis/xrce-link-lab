@@ -1,0 +1,6 @@
+:name: XRCE-Link-Lab BLE Multinode Demo
+:description: Load Renode built-in two-node BLE Zephyr demo (nRF52840)
+
+# This script delegates to Renode's built-in 2-node BLE demo.
+# It will start two nRF52840 nodes that exchange BLE packets.
+include @scripts/multi-node/nrf52840-ble-zephyr.resc
