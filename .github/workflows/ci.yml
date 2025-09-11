@@ -124,13 +124,13 @@ jobs:
           sleep 0.5
           # 用 Python 標準庫建立 TCP 連線到 127.0.0.1:8888，維持 ~1s 後關閉
           python3 - <<'PY'
-import socket, time
-s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-s.settimeout(5.0)
-s.connect(("127.0.0.1", 8888))
-time.sleep(1.0)   # 保持連線片刻
-s.close()
-PY
+          import socket, time
+          s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+          s.settimeout(5.0)
+          s.connect(("127.0.0.1", 8888))
+          time.sleep(1.0)   # 保持連線片刻
+          s.close()
+          PY
           # 確認有 ESTAB 連線曾建立（允許很快關閉，因此用 || true 避免時間窗口誤判）
           ss -ptn | grep -E ':8888\s' || true
           # 等待 Agent 結束（timeout 會 kill）
