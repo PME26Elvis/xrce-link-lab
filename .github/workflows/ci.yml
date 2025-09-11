@@ -187,6 +187,16 @@ jobs:
           wait $PUB_PID || true
           kill $AG_PID 2>/dev/null || true
           sleep 0.2
+      - name: Collect metrics (baseline)
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/xrce-helloworld
+          python3 tools/metrics/collect_helloworld.py \
+            --agent-log agent.log \
+            --pub-out pub.out \
+            --sub-out sub.out \
+            --label baseline \
+            --out artifacts/xrce-helloworld/metrics.json
 
       - name: Upload XRCE HelloWorld artifacts
         if: always()
