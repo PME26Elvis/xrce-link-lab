@@ -323,6 +323,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 官方 Zephyr action：拉 SDK + 建 west workspace（已包含 west init）
       - name: Setup Zephyr (SDK + west workspace)
         uses: zephyrproject-rtos/action-zephyr-setup@v1
         with:
@@ -330,13 +331,37 @@ jobs:
           toolchains: arm-zephyr-eabi
           sdk-version: 0.16.3
 
-      - name: Build Zephyr app for nRF52840 DK
+      # 明確同步模組 + 匯出環境（避免因快取或網路造成的缺件）
+      - name: West update & export
         run: |
-          west build app -b nrf52840dk_nrf52840
+          set -euo pipefail
+          west update
+          west zephyr-export
+          west list
 
-      - name: Upload Zephyr ELF
+      # 保險起見安裝 Python 需求（action 通常會處理，但這裡顯式一次）
+      - name: Python deps for Zephyr
+        run: |
+          python3 -m pip install --upgrade pip
+          pip3 install -r zephyr/scripts/requirements.txt
+
+      # 建置：顯式指定來源 -s app，並用 --pristine always -v 方便診斷
+      - name: Build Zephyr app for nRF5280 DK
+        run: |
+          set -euo pipefail
+          west build -s app -b nrf52840dk_nrf52840 build --pristine always -v
+
+      # 上傳 ELF 與紀錄：就算失敗也打包 CMake/編譯輸出，方便排錯
+      - name: Upload Zephyr build artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: zephyr-baseline-elf
-          path: build/zephyr/zephyr.elf
+          name: zephyr-baseline-build
+          path: |
+            build/zephyr/zephyr.elf
+            build/zephyr/zephyr.map
+            build/CMakeCache.txt
+            build/CMakeFiles/**
+            build/zephyr/.config
+            build/zephyr/include/generated/**
+            build/zephyr/zephyr.dts
