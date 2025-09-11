@@ -44,3 +44,21 @@ jobs:
         with:
           renode-revision: master
           tests-to-run: tests/multinode.robot
+  renode-two-nodes:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Renode NRF two-node (Robot)
+        uses: antmicro/renode-test-action@v4
+        with:
+          renode-revision: master
+          tests-to-run: tests/two_nodes.robot
+          artifacts-path: artifacts/two_nodes
+
+      - name: Upload Robot reports (two-nodes)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: renode-two-nodes-reports
+          path: artifacts/two_nodes/**
