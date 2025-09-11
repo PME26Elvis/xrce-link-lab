@@ -379,7 +379,7 @@ jobs:
       - name: Install micro-ROS build deps (per module README)
         run: |
           python3 -m pip install --upgrade pip
-          pip3 install catkin_pkg lark-parser empy colcon-common-extensions
+          pip3 install catkin_pkg lark-parser empy colcon-common-extensions vcstool pyyaml ament_package
 
       - name: West update (fetch micro-ROS module)
         run: |
