@@ -28,20 +28,19 @@ jobs:
           git clone --depth 1 https://github.com/eProsima/Micro-XRCE-DDS-Agent.git
           cd Micro-XRCE-DDS-Agent && mkdir build && cd build
           cmake ..
-          make -j$(nproc)
+          make -j"$(nproc)"
           sudo make install
           sudo ldconfig
       - name: Sanity check Agent CLI
         run: |
           MicroXRCEAgent --help | head -n 30
 
-   renode-multinode:
-      runs-on: ubuntu-22.04
-      steps:
-        - uses: actions/checkout@v4
-        - name: Run Renode 2-node BLE demo
-          uses: antmicro/renode-test-action@v4
-          with:
-            renode-revision: 'master'
-            tests-to-run: 'tests/multinode.robot'
-
+  renode-multinode:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Renode 2-node BLE demo
+        uses: antmicro/renode-test-action@v4
+        with:
+          renode-revision: 'master'
+          tests-to-run: 'tests/multinode.robot'
