@@ -364,3 +364,39 @@ jobs:
             build/zephyr/.config
             build/zephyr/include/generated/**
             build/zephyr/zephyr.dts
+  zephyr-build-microros-native:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Zephyr (SDK + west workspace)
+        uses: zephyrproject-rtos/action-zephyr-setup@v1
+        with:
+          app-path: app
+          toolchains: arm-zephyr-eabi
+          sdk-version: 0.16.3
+
+      - name: Install micro-ROS build deps (per module README)
+        run: |
+          python3 -m pip install --upgrade pip
+          pip3 install catkin_pkg lark-parser empy colcon-common-extensions
+
+      - name: West update (fetch micro-ROS module)
+        run: |
+          west update
+
+      - name: Build micro-ROS sample app (native_posix)
+        run: |
+          # 直接以 micro-ROS 模組中的範例 app 當 Zephyr 應用程式
+          west build modules/libmicroros -b native_posix --pristine always
+
+      - name: Upload micro-ROS (native_posix) artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zephyr-microros-native
+          path: |
+            build/zephyr/zephyr.*
+            build/zephyr/.config
+            build/zephyr/zephyr.dts
+          if-no-files-found: warn
