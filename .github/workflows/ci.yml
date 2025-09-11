@@ -344,7 +344,7 @@ jobs:
       - name: Build Zephyr app for native_posix (baseline)
         run: |
           set -euo pipefail
-          west build -b native_posix app --pristine always -v || {
+          west build -b native_posix app --pristine always || {
             echo "=== CMake logs (if any) ==="
             find build -name CMakeError.log -print -exec sed -n '1,200p' {} \; || true
             find build -name CMakeOutput.log -print -exec sed -n '1,200p' {} \; || true
