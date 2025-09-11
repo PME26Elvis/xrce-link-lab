@@ -387,9 +387,7 @@ jobs:
 
       - name: Build micro-ROS sample app (QEMU Cortex-M3)
         run: |
-          west build modules/libmicroros -b qemu_cortex_m3 --pristine always -- \
-            -DDTC_OVERLAY_FILE="$GITHUB_WORKSPACE/app/empty.overlay"
-
+          west build -b native_posix modules/libmicroros --pristine always -- -DCONF_FILE=modules/libmicroros/host-udp.conf
       - name: Upload micro-ROS (qemu) artifacts
         if: always()
         uses: actions/upload-artifact@v4
