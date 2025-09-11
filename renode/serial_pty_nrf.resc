@@ -1,0 +1,17 @@
+:name: XRCE-Link-Lab nRF52840 single-node with UART PTY
+:description: Zephyr Shell on nRF52840 with host PTY bridged to UART0 at /tmp/xrce_uart
+
+using sysbus
+
+# Create a PTY on the host and name it "ttyA" inside Renode
+emulation CreateUartPtyTerminal "ttyA" "/tmp/xrce_uart"
+
+# Create the machine and load nRF52840 platform
+mach create "nodeS"
+machine LoadPlatformDescription @platforms/cpus/nrf52840.repl
+
+# Connect UART0 to the PTY and load Zephyr Shell ELF (official hosted binary)
+connector Connect sysbus.uart0 ttyA
+$bin=@https://dl.antmicro.com/projects/renode/renode-nrf52840-zephyr_shell_module.elf-gf8d05cf-s_1310072-c00fbffd6b65c6238877c4fe52e8228c2a38bf1f
+showAnalyzer uart0
+sysbus LoadELF $bin
