@@ -330,37 +330,21 @@ jobs:
           toolchains: arm-zephyr-eabi
           sdk-version: 0.16.3
 
-      - name: West update & export
+      - name: Show west env and boards (for diagnosis)
         run: |
           set -euo pipefail
-          west update
-          west zephyr-export
+          west --version
+          west topdir
           west list
+          echo "---- west boards (first 200) ----"
+          west boards | head -n 200 || true
+          echo "---- search 52840 ----"
+          west boards -n 52840 || true
 
-      - name: Python deps for Zephyr
+      - name: Build Zephyr app for native_posix (baseline)
         run: |
           set -euo pipefail
-          python3 -m pip install --upgrade pip
-          pip3 install -r zephyr/scripts/requirements.txt
-
-      - name: Verify board availability (new ID scheme)
-        run: |
-          set -euo pipefail
-          test -d zephyr/boards/nordic/nrf52840dk || {
-            echo "[ERROR] Expected Zephyr board dir 'zephyr/boards/nordic/nrf52840dk' not found."
-            find zephyr/boards -maxdepth 2 -type d | head -n 200 || true
-            exit 1
-          }
-          west boards | grep -qx 'nrf52840dk/nrf52840' || {
-            echo "[ERROR] 'west boards' does not list 'nrf52840dk/nrf52840'."
-            west boards | head -n 200 || true
-            exit 1
-          }
-
-      - name: Build Zephyr app for nRF52840 DK (slash ID)
-        run: |
-          set -euo pipefail
-          west build -s app -b 'nrf52840dk/nrf52840' build --pristine always -v || {
+          west build -b native_posix app --pristine always -v || {
             echo "=== CMake logs (if any) ==="
             find build -name CMakeError.log -print -exec sed -n '1,200p' {} \; || true
             find build -name CMakeOutput.log -print -exec sed -n '1,200p' {} \; || true
@@ -374,8 +358,7 @@ jobs:
           name: zephyr-baseline-build
           if-no-files-found: warn
           path: |
-            build/zephyr/zephyr.elf
-            build/zephyr/zephyr.map
+            build/zephyr/zephyr*
             build/CMakeCache.txt
             build/CMakeFiles/**
             build/zephyr/.config
