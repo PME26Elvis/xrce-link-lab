@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  renode-smoke:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Renode Robot tests
+        uses: antmicro/renode-test-action@v4
+        with:
+          renode-revision: 'master'
+          tests-to-run: 'tests/smoke.robot'
+
+  agent-build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Install deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            git cmake build-essential libasio-dev libtinyxml2-dev
+      - name: Build Micro XRCE-DDS Agent
+        run: |
+          git clone --depth 1 https://github.com/eProsima/Micro-XRCE-DDS-Agent.git
+          cd Micro-XRCE-DDS-Agent && mkdir build && cd build
+          cmake ..
+          make -j$(nproc)
+          sudo make install
+          sudo ldconfig
+      - name: Sanity check Agent CLI
+        run: |
+          MicroXRCEAgent --help | head -n 30
