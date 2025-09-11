@@ -294,7 +294,17 @@ jobs:
           wait $PUB_PID || true
           kill $AG_PID 2>/dev/null || true
           sleep 0.2
-
+      - name: Collect metrics (netem delay100ms_loss1)
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/xrce-helloworld-netem
+          python3 tools/metrics/collect_helloworld.py \
+            --agent-log agent.log \
+            --pub-out pub.out \
+            --sub-out sub.out \
+            --netem netem.txt \
+            --label delay100ms_loss1 \
+            --out artifacts/xrce-helloworld-netem/metrics.json
       - name: Clear netem and collect artifacts
         if: always()
         run: |
