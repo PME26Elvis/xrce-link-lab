@@ -323,7 +323,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # 官方 Zephyr action：拉 SDK + 建 west workspace（已包含 west init）
+      # 官方 Zephyr Action：會安裝 SDK、初始化 west 工作區（依 app/west.yml）
       - name: Setup Zephyr (SDK + west workspace)
         uses: zephyrproject-rtos/action-zephyr-setup@v1
         with:
@@ -331,32 +331,25 @@ jobs:
           toolchains: arm-zephyr-eabi
           sdk-version: 0.16.3
 
-      # 明確同步模組 + 匯出環境（避免因快取或網路造成的缺件）
-      - name: West update & export
+      # 建置（依官方建議語法）：來源就是 app/；明確指定板子
+      - name: Build Zephyr app for nRF52840 DK
         run: |
           set -euo pipefail
-          west update
-          west zephyr-export
           west list
+          west build -b nrf52840dk_nrf52840 app || {
+            echo "=== CMake logs (if any) ==="
+            find build -name CMakeError.log -print -exec sed -n '1,200p' {} \; || true
+            find build -name CMakeOutput.log -print -exec sed -n '1,200p' {} \; || true
+            exit 1
+          }
 
-      # 保險起見安裝 Python 需求（action 通常會處理，但這裡顯式一次）
-      - name: Python deps for Zephyr
-        run: |
-          python3 -m pip install --upgrade pip
-          pip3 install -r zephyr/scripts/requirements.txt
-
-      # 建置：顯式指定來源 -s app，並用 --pristine always -v 方便診斷
-      - name: Build Zephyr app for nRF5280 DK
-        run: |
-          set -euo pipefail
-          west build -s app -b nrf52840dk_nrf52840 build --pristine always -v
-
-      # 上傳 ELF 與紀錄：就算失敗也打包 CMake/編譯輸出，方便排錯
+      # 上傳成果；即使沒有檔也不要讓這步驟變成失敗的原因
       - name: Upload Zephyr build artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: zephyr-baseline-build
+          if-no-files-found: warn
           path: |
             build/zephyr/zephyr.elf
             build/zephyr/zephyr.map
