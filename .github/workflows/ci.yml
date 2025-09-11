@@ -379,12 +379,12 @@ jobs:
       - name: Install micro-ROS build deps
         run: |
           python3 -m pip install --upgrade pip setuptools wheel
-          pip3 install colcon-common-extensions empy lark-parser catkin_pkg vcstool PyYAML ament-package
+          pip3 install colcon-common-extensions empy lark-parser catkin_pkg vcstool PyYAML
 
       - name: West update (fetch micro-ROS module)
         run: |
           west update
-          
+      
       - name: Prefetch micro-ROS sources (uros.repos)
         run: |
           make -f modules/libmicroros/libmicroros.mk download
@@ -453,7 +453,8 @@ jobs:
       - name: Install micro-ROS build deps
         run: |
           python3 -m pip install --upgrade pip setuptools wheel
-          pip3 install colcon-common-extensions empy lark-parser catkin_pkg vcstool PyYAML ament-package
+          pip3 install colcon-common-extensions empy lark-parser catkin_pkg vcstool PyYAML
+
       - name: West update (fetch micro-ROS module)
         run: west update
         
