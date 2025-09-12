@@ -549,8 +549,11 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf build
+          sed -n '1,120p' modules/libmicroros/app.overlay || true
+          
+          # 用「空 overlay」避免引用不存在的 label（之後我們再補 nRF 專用 overlay）
           west build modules/libmicroros -b nrf52840dk/nrf52840 -p \
-            -- -DDTC_OVERLAY_FILE="${GITHUB_WORKSPACE}/modules/libmicroros/app.overlay"
+            -- -DDTC_OVERLAY_FILE="${GITHUB_WORKSPACE}/app/empty.overlay"
           file build/zephyr/zephyr.elf || true
           file build/zephyr/zephyr.hex || true
 
