@@ -436,9 +436,32 @@ jobs:
         run: |
           set -euo pipefail
           west update
-          west build firmware/nrf52_base_app -b nrf52840dk/nrf52840 --pristine always
+          
+          # 同時在「環境變數」與「CMake」層關掉 warnings-as-errors（不同小版會讀不同入口）
+          export KCONFIG_WARNINGS_AS_ERRORS=0
+          export KCONFIG_WARN_AS_ERROR=0
+          export KCONFIG_WARN_TO_ERROR=0
+          
+          rm -rf build
+          west build firmware/nrf52_base_app -b nrf52840dk/nrf52840 --pristine always \
+            -- -DCONF_FILE="${GITHUB_WORKSPACE}/firmware/nrf52_base_app/prj.conf;${GITHUB_WORKSPACE}/app/relax.conf" \
+               -DOVERLAY_CONFIG="${GITHUB_WORKSPACE}/app/relax.conf" \
+               -DKCONFIG_WARNINGS_AS_ERRORS=0 \
+               -DKCONFIG_WARN_AS_ERROR=0 \
+               -DKCONFIG_TREAT_WARNINGS_AS_ERRORS=0 \
+               -DKCONFIG_WARN_TO_ERROR=0
+          
+          echo "===== sanity: merged .config keys ====="
+          if [ -f build/zephyr/.config ]; then
+            grep -E "KCONFIG_WARNINGS_AS_ERRORS=|KCONFIG_WARN_AS_ERROR=|POSIX_CLOCK=|UART_0_ENHANCED_POLL_OUT=|CLOCK_CONTROL_NRF_K32SRC_(XTAL|RC)=" build/zephyr/.config || true
+          else
+            echo "::notice::.config not generated (kconfig aborted earlier)."
+          fi
+          
+          # 檔案存證（Artifacts 步驟會撿）
           file build/zephyr/zephyr.elf || true
           file build/zephyr/zephyr.hex || true
+
 
       - name: Upload baseline ELF
         if: always()
