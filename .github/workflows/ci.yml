@@ -417,6 +417,79 @@ jobs:
             build/zephyr/.config
             build/zephyr/zephyr.dts
             
+  microros-zephyr-nrf52840-build-z4_0:
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Zephyr (SDK + west workspace)
+        uses: zephyrproject-rtos/action-zephyr-setup@v1
+        with:
+          app-path: app
+          toolchains: arm-zephyr-eabi
+          sdk-version: 0.16.3
+
+      - name: Switch Zephyr to v4.0.0 and update modules
+        run: |
+          set -euo pipefail
+          west init -l app
+          # 先拉一遍，確保工作樹完整
+          west update
+          # 將 Zephyr 切到 v4.0.0（這會更新 manifest）
+          cd zephyr
+          git fetch --tags --force
+          git checkout v4.0.0
+          cd -
+          # 依 v4.0.0 的 manifest 重新對齊模組版本
+          west update
+          west zephyr-export
+          west --version
+          git -C zephyr describe --tags --always || true
+          west list | sed -n '1,160p'
+
+      - name: Install micro-ROS build deps (per module README)
+        run: |
+          set -euo pipefail
+          python3 -m pip install --upgrade pip setuptools wheel
+          python3 -m pip install --user --no-cache-dir colcon-common-extensions empy lark-parser catkin_pkg PyYAML
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Fetch micro_ros_zephyr_module (kilted, shallow)
+        run: |
+          set -euo pipefail
+          rm -rf modules/libmicroros
+          git clone --depth 1 -b kilted https://github.com/micro-ROS/micro_ros_zephyr_module.git modules/libmicroros
+          test -f modules/libmicroros/CMakeLists.txt
+          test -f modules/libmicroros/prj.conf
+
+      - name: Build micro-ROS module for nRF52840DK on Zephyr v4.0.0
+        env:
+          ZEPHYR_MODULES: ${{ github.workspace }}/modules/libmicroros
+        run: |
+          set -euo pipefail
+          rm -rf build
+          # v4.0.0 下先走最小路徑：nRF 板 + 空 DTS overlay；Kconfig 放寬檔可帶可不帶
+          west build modules/libmicroros -b nrf52840dk/nrf52840 --pristine \
+            -- -DDTC_OVERLAY_FILE="${GITHUB_WORKSPACE}/app/empty.overlay" \
+               -DCONF_FILE="${GITHUB_WORKSPACE}/modules/libmicroros/prj.conf;${GITHUB_WORKSPACE}/app/relax.conf"
+          file build/zephyr/zephyr.elf || true
+          file build/zephyr/zephyr.hex || true
+
+      - name: Upload micro-ROS (nRF52840 @ Zephyr 4.0.0) build artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: microros-nrf52840-build-z4_0
+          if-no-files-found: warn
+          path: |
+            build/zephyr/zephyr.*
+            build/zephyr/.config
+            build/zephyr/zephyr.dts
+            build/build.log
+
   microros-zephyr-stm32l475-build:
     runs-on: ubuntu-22.04
     defaults:
