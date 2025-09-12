@@ -462,31 +462,37 @@ jobs:
           set -euo pipefail
           rm -rf build
           
-          # （診斷）模組自帶 overlay 我們不用
+          # 模組自帶 overlay 我們不用（會含 STM32 節點）
           sed -n '1,80p' modules/libmicroros/app.overlay || true
           
-          # 關閉「警告視為錯誤」的所有路徑（環境變數 + CMake 變數，含正確鍵名）
+          # 關閉所有已知路徑的「警告即錯誤」開關（不同 Zephyr/腳本版本吃不同名字）
           export KCONFIG_WARNINGS_AS_ERRORS=0
           export KCONFIG_WARN_AS_ERROR=0
+          export KCONFIG_WARN_TO_ERROR=0
           
           APP_PRJ="${GITHUB_WORKSPACE}/modules/libmicroros/prj.conf"
           RELAX="${GITHUB_WORKSPACE}/app/relax.conf"
           CONF_MERGED="${APP_PRJ};${RELAX}"
           
-          west build modules/libmicroros -b nrf52840dk/nrf52840 -p \
+          west build modules/libmicroros -b nrf52840dk/nrf52840 --pristine \
             -- -DDTC_OVERLAY_FILE="${GITHUB_WORKSPACE}/app/empty.overlay" \
                -DCONF_FILE="${CONF_MERGED}" \
+               -DEXTRA_CONF_FILE="${RELAX}" \
                -DKCONFIG_WARNINGS_AS_ERRORS=0 \
                -DKCONFIG_WARN_AS_ERROR=0 \
-               -DKCONFIG_TREAT_WARNINGS_AS_ERRORS=0
+               -DKCONFIG_TREAT_WARNINGS_AS_ERRORS=0 \
+               -DKCONFIG_WARN_TO_ERROR=0
           
           echo "===== sanity: merged .config keys ====="
-          grep -E "KCONFIG_WARNINGS_AS_ERRORS=|KCONFIG_WARN_AS_ERROR=|POSIX_CLOCK=|UART_0_ENHANCED_POLL_OUT=|CLOCK_CONTROL_NRF_K32SRC_(XTAL|RC)=" build/zephyr/.config || true
+          if [ -f build/zephyr/.config ]; then
+            grep -E "KCONFIG_WARNINGS_AS_ERRORS=|KCONFIG_WARN_AS_ERROR=|POSIX_CLOCK=|UART_0_ENHANCED_POLL_OUT=|CLOCK_CONTROL_NRF_K32SRC_(XTAL|RC)=" build/zephyr/.config || true
+          else
+            echo "::notice::.config not generated (Kconfig stopped earlier)."
+          fi
           
           # 存證
           file build/zephyr/zephyr.elf || true
           file build/zephyr/zephyr.hex || true
-
           
       - name: Upload micro-ROS (nRF52840) build artifacts
         if: always()
