@@ -364,59 +364,95 @@ jobs:
             build/zephyr/.config
             build/zephyr/include/generated/**
             build/zephyr/zephyr.dts
+            
   microros-native-posix:
     runs-on: ubuntu-22.04
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
-  
+
       - name: Setup Zephyr (SDK + west workspace)
         uses: zephyrproject-rtos/action-zephyr-setup@v1
         with:
           app-path: app
           toolchains: arm-zephyr-eabi
           sdk-version: 0.16.3
-          # 不再用任何 filter，先求穩；空間若吃緊我們再縮
-  
-      - name: Install micro-ROS build deps
+
+      - name: Install micro-ROS build deps (per module README)
         run: |
+          set -euo pipefail
           python3 -m pip install --upgrade pip setuptools wheel
           python3 -m pip install --user --no-cache-dir colcon-common-extensions empy lark-parser catkin_pkg PyYAML
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-  
-      # ① 直接把模組抓到 modules/libmicroros（不碰 west.yml）
-      - name: Fetch micro_ros_zephyr_module (shallow)
+
+      # 用 ZEPHYR_MODULES 暫掛模組，避免動到 west.yml（對齊你的 G 條款）
+      - name: Fetch micro_ros_zephyr_module (kilted, shallow)
         run: |
           set -euo pipefail
           rm -rf modules/libmicroros
           git clone --depth 1 -b kilted https://github.com/micro-ROS/micro_ros_zephyr_module.git modules/libmicroros
           test -f modules/libmicroros/CMakeLists.txt
           test -f modules/libmicroros/prj.conf
-  
-      # ② 用 ZEPHYR_MODULES 暫時註冊這個模組，然後 west build
+
       - name: Build micro-ROS sample (native_posix)
         env:
           ZEPHYR_MODULES: ${{ github.workspace }}/modules/libmicroros
         run: |
           set -euo pipefail
           west --version
-          west list | sed -n '1,80p'
-          rm -rf build && mkdir -p build
+          west list | sed -n '1,120p'
+          rm -rf build
           west build modules/libmicroros -b native_posix --pristine always \
             -- -DDTC_OVERLAY_FILE="${GITHUB_WORKSPACE}/app/empty.overlay"
-          # 保存關鍵輸出
-          mkdir -p artifacts
-          cp -f build/zephyr/.config artifacts/.config || true
-          cp -f build/zephyr/zephyr.* artifacts/ || true
-  
-      - name: Upload build artifacts
+          file build/zephyr/zephyr.exe || true
+          file build/zephyr/zephyr.elf || true
+          mkdir -p artifacts/microros-native
+          cp -f build/zephyr/.config artifacts/microros-native/.config || true
+          cp -f build/zephyr/zephyr.* artifacts/microros-native/ || true
+
+      - name: Build & install Micro XRCE-DDS Agent
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends git cmake build-essential libasio-dev libtinyxml2-dev
+          git clone --depth 1 https://github.com/eProsima/Micro-XRCE-DDS-Agent.git
+          cd Micro-XRCE-DDS-Agent && mkdir build && cd build
+          cmake ..
+          make -j"$(nproc)"
+          sudo make install
+          sudo ldconfig
+
+      - name: E2E smoke - run Agent udp4:8888 and app
+        run: |
+          set -euo pipefail
+          MicroXRCEAgent udp4 --port 8888 -v 6 > agent.log 2>&1 &
+          AG_PID=$!
+          sleep 0.8
+          ss -lun | grep -q ':8888' || (echo "Agent did not bind 8888/udp"; cat agent.log; exit 1)
+
+          # 執行 micro-ROS 範例（native_posix 可直接執行）；先不強斷言，取回輸出供後續解析
+          timeout 10s ./build/zephyr/zephyr.exe > app.out 2>&1 || true
+
+          # 清理 Agent
+          kill $AG_PID 2>/dev/null || true
+          sleep 0.2
+
+          mkdir -p artifacts/microros-native
+          mv -f agent.log app.out artifacts/microros-native/
+
+      - name: Upload artifacts (build + e2e logs)
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: microros-native-posix
           path: |
-            build/build.log
-            artifacts/**
+            artifacts/microros-native/**
+            build/zephyr/zephyr.*
+            build/zephyr/.config
           if-no-files-found: warn
+
 
 
   # zephyr-build-microros-qemu:
