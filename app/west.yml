@@ -1,5 +1,5 @@
 manifest:
-  version: 0.14
+  version: "1.2"
   self:
     path: app
 
