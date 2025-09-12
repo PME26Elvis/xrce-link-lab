@@ -385,7 +385,8 @@ jobs:
       - name: Install micro-ROS build deps (per module README)
         run: |
           python3 -m pip install --upgrade pip setuptools wheel
-          pip3 install --user colcon-common-extensions empy lark-parser catkin_pkg PyYAML
+          # 加上 vcstool，colcon 會用到 vcs import
+          pip3 install --user colcon-common-extensions empy lark-parser catkin_pkg PyYAML vcstool
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
   
       - name: Init west workspace from app/west.yml
@@ -394,7 +395,11 @@ jobs:
           west init -l app
           west update
           west zephyr-export
-  
+      - name: Freeze manifest (diagnose exact SHAs)
+        run: |
+          west manifest --freeze > west-frozen.yml
+          sed -n '1,200p' west-frozen.yml
+
       - name: Diagnose module presence (non-fatal)
         run: |
           set -uo pipefail
@@ -407,12 +412,19 @@ jobs:
           done
           echo "Diagnosis only."
   
-      - name: Build micro-ROS sample app (native_posix)
+      - name: Build micro-ROS app (native_posix)
         run: |
           set -euo pipefail
-          west build modules/libmicroros -b native_posix --pristine always -- \
+          # 詳盡 west 記錄，並把 cmake/ninja 輸出存 log
+          west -v build modules/libmicroros -b native_posix --pristine always -- \
             -DDTC_OVERLAY_FILE="$GITHUB_WORKSPACE/app/empty.overlay" \
           2>&1 | tee build/build.log
+        # 緊接一個步驟，把最後 300 行印出來（失敗時尤其重要）
+      - name: Show last lines of build.log (on failure too)
+        if: always()
+        run: |
+          echo "===== tail build/build.log ====="
+          tail -n 300 build/build.log || true
   
       - name: Inspect merged Kconfig (micro-ROS / transport)
         if: always()
@@ -456,11 +468,12 @@ jobs:
           make -j"$(nproc)"
           make install
           ldconfig
-  
+          
       - name: Install micro-ROS build deps (per module README)
         run: |
           python3 -m pip install --upgrade pip setuptools wheel
-          pip3 install --user colcon-common-extensions empy lark-parser catkin_pkg PyYAML
+          # 加上 vcstool，colcon 會用到 vcs import
+          pip3 install --user colcon-common-extensions empy lark-parser catkin_pkg PyYAML vcstool
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
   
       - name: Init west workspace from app/west.yml
@@ -469,14 +482,24 @@ jobs:
           west init -l app
           west update
           west zephyr-export
-  
+      - name: Freeze manifest (diagnose exact SHAs)
+        run: |
+          west manifest --freeze > west-frozen.yml
+          sed -n '1,200p' west-frozen.yml
+
       - name: Build micro-ROS app (native_posix)
         run: |
           set -euo pipefail
-          # 先不帶 host-udp.conf，避免 Kconfig 警告升級為錯誤
-          west build modules/libmicroros -b native_posix --pristine always -- \
+          # 詳盡 west 記錄，並把 cmake/ninja 輸出存 log
+          west -v build modules/libmicroros -b native_posix --pristine always -- \
             -DDTC_OVERLAY_FILE="$GITHUB_WORKSPACE/app/empty.overlay" \
           2>&1 | tee build/build.log
+        # 緊接一個步驟，把最後 300 行印出來（失敗時尤其重要）
+      - name: Show last lines of build.log (on failure too)
+        if: always()
+        run: |
+          echo "===== tail build/build.log ====="
+          tail -n 300 build/build.log || true
   
       - name: Verify rcl headers are present (sanity check)
         run: |
