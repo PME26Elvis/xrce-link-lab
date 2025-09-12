@@ -382,31 +382,53 @@ jobs:
           python3 -m pip install --user colcon-common-extensions empy lark-parser catkin_pkg PyYAML
       - name: Ensure ~/.local/bin on PATH (for colcon)
         run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        
+      - name: Sanity check colcon on PATH
+        run: |
+          set -euo pipefail
+          which colcon
+          colcon --help >/dev/null  # 不再 pipe 給 head，避免 BrokenPipe
+          colcon list --help >/dev/null
 
       - name: West update (fetch modules)
         run: west update
 
-      - name: Verify micro-ROS module is present (files exist)
+      - name: Diagnose micro-ROS module presence (non-fatal)
         run: |
-          set -euo pipefail
-          # 確認模組已被 west 抓下來
-          west list | grep -q micro_ros_zephyr_module
-          # 應有的 app 與來源檔
-          test -f modules/libmicroros/prj.conf
-          test -f modules/libmicroros/src/main.c
-          # colcon 設定有的版本叫 colcon.meta、有的叫 app-colcon.meta，擇一存在即可
-          if [ ! -f modules/libmicroros/colcon.meta ] && [ ! -f modules/libmicroros/app-colcon.meta ]; then
-            echo "::warning:: Neither colcon.meta nor app-colcon.meta found; continuing (some revisions keep colcon config elsewhere)."
+          set -uo pipefail  # 不用 -e，避免因為 test 失敗直接退出
+          echo "---- west list (micro*) ----"
+          west list | grep -i micro || true
+          echo "---- show manifest (app/west.yml) ----"
+          sed -n '1,200p' app/west.yml || true
+      
+          echo "---- ls modules/libmicroros (tree) ----"
+          ls -la modules || true
+          ls -la modules/libmicroros || true
+      
+          # 逐一檢查但不退出；只做診斷輸出
+          for f in prj.conf src/main.c app.overlay package.xml CMakeLists.txt; do
+            if [ -f "modules/libmicroros/$f" ]; then
+              echo "FOUND: modules/libmicroros/$f"
+            else
+              echo "MISSING: modules/libmicroros/$f"
+            fi
+          done
+      
+          # 若路徑不是 modules/libmicroros，就試著從 west list 抓實際路徑
+          MOD_PATH="$(west list micro_ros_zephyr_module 2>/dev/null | awk '{print $2}' || true)"
+          if [ -n "$MOD_PATH" ] && [ "$MOD_PATH" != "modules/libmicroros" ]; then
+            echo "::notice:: west reports micro_ros_zephyr_module path = $MOD_PATH (與預期不同)"
+            ls -la "$MOD_PATH" || true
           fi
-          echo "micro_ros_zephyr_module looks present."
+      
+          echo "Diagnosis only – not failing the job here."
+
 
       # ⚠️ 刪掉任何 “Prefetch micro-ROS (make …)” 或 “Show micro-ROS install tree” 的步驟
 
       - name: Build micro-ROS sample app (native_posix)
         run: |
           set -euo pipefail
-          # 保留 prj.conf（Zephyr 會自動讀取），用 OVERLAY_CONFIG 混入 host-udp.conf，
-          # 並將 DTC_OVERLAY_FILE 指到我們的空 overlay，避免 app.overlay 汙染 native_posix。
           west build modules/libmicroros -b native_posix --pristine always -- \
             -DOVERLAY_CONFIG="$GITHUB_WORKSPACE/modules/libmicroros/host-udp.conf" \
             -DDTC_OVERLAY_FILE="$GITHUB_WORKSPACE/app/empty.overlay" \
@@ -475,40 +497,57 @@ jobs:
       - name: Ensure ~/.local/bin on PATH (for colcon)
         run: |
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          
       - name: Sanity check colcon on PATH
         run: |
           set -euo pipefail
           which colcon
-          colcon list --help | head -n 20
-      - name: Sanity check colcon on PATH
-        run: |
-          set -euo pipefail
-          which colcon
-          colcon --help | head -n 40
-          colcon list --help | head -n 20
+          colcon --help >/dev/null  # 不再 pipe 給 head，避免 BrokenPipe
+          colcon list --help >/dev/null
+
           
       - name: West update (fetch modules)
         run: west update
-      - name: Verify micro-ROS module is present (files exist)
+        
+      - name: Diagnose micro-ROS module presence (non-fatal)
         run: |
-          set -euo pipefail
-          west list | grep -q micro_ros_zephyr_module
-          test -f modules/libmicroros/prj.conf
-          test -f modules/libmicroros/src/main.c
-          if [ ! -f modules/libmicroros/colcon.meta ] && [ ! -f modules/libmicroros/app-colcon.meta ]; then
-            echo "::warning:: Neither colcon.meta nor app-colcon.meta found; continuing."
+          set -uo pipefail  # 不用 -e，避免因為 test 失敗直接退出
+          echo "---- west list (micro*) ----"
+          west list | grep -i micro || true
+          echo "---- show manifest (app/west.yml) ----"
+          sed -n '1,200p' app/west.yml || true
+      
+          echo "---- ls modules/libmicroros (tree) ----"
+          ls -la modules || true
+          ls -la modules/libmicroros || true
+      
+          # 逐一檢查但不退出；只做診斷輸出
+          for f in prj.conf src/main.c app.overlay package.xml CMakeLists.txt; do
+            if [ -f "modules/libmicroros/$f" ]; then
+              echo "FOUND: modules/libmicroros/$f"
+            else
+              echo "MISSING: modules/libmicroros/$f"
+            fi
+          done
+      
+          # 若路徑不是 modules/libmicroros，就試著從 west list 抓實際路徑
+          MOD_PATH="$(west list micro_ros_zephyr_module 2>/dev/null | awk '{print $2}' || true)"
+          if [ -n "$MOD_PATH" ] && [ "$MOD_PATH" != "modules/libmicroros" ]; then
+            echo "::notice:: west reports micro_ros_zephyr_module path = $MOD_PATH (與預期不同)"
+            ls -la "$MOD_PATH" || true
           fi
-          echo "micro_ros_zephyr_module looks present."
+      
+          echo "Diagnosis only – not failing the job here."
+
           
       - name: Build micro-ROS sample app (native_posix)
         run: |
           set -euo pipefail
-          # 保留 prj.conf（Zephyr 會自動讀取），用 OVERLAY_CONFIG 混入 host-udp.conf，
-          # 並將 DTC_OVERLAY_FILE 指到我們的空 overlay，避免 app.overlay 汙染 native_posix。
           west build modules/libmicroros -b native_posix --pristine always -- \
             -DOVERLAY_CONFIG="$GITHUB_WORKSPACE/modules/libmicroros/host-udp.conf" \
             -DDTC_OVERLAY_FILE="$GITHUB_WORKSPACE/app/empty.overlay" \
           2>&1 | tee build/build.log
+
 
       
       - name: Verify rcl headers are present
