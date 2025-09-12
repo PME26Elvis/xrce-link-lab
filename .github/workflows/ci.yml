@@ -376,10 +376,34 @@ jobs:
           toolchains: arm-zephyr-eabi
           sdk-version: 0.16.3
   
-      - name: Install micro-ROS build deps (pip)
+      - name: Install micro-ROS build deps
         run: |
           python3 -m pip install --upgrade pip setuptools wheel
-          pip3 install colcon-common-extensions empy lark-parser catkin_pkg vcstool PyYAML ament_package
+          # 只裝 micro-ROS Zephyr 模組需要的套件（官方 README）
+          python3 -m pip install --user colcon-common-extensions empy lark-parser catkin_pkg PyYAML
+          # 把 ~/.local/bin 放進 PATH，讓 CMake 外掛能找到 "colcon"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Sanity check colcon on PATH
+        run: |
+          set -euo pipefail
+          which colcon
+          colcon --version
+      - name: Verify micro-ROS module checkout
+        run: |
+          set -euo pipefail
+          west list | grep -i micro || true
+          test -d modules/libmicroros
+      
+      # 若專案內含 libmicroros.mk，就先行預抓（有保護，不會在缺檔時失敗）
+      - name: Prefetch micro-ROS sources (optional)
+        run: |
+          set -euo pipefail
+          MF="modules/libmicroros/modules/libmicroros/libmicroros.mk"
+          if [ -f "$MF" ]; then
+            make -f "$MF" download
+          else
+            echo "No $MF, skipping prefetch (CMake will fetch during build)."
+          fi
   
       - name: West update (fetch modules)
         run: west update
@@ -451,11 +475,34 @@ jobs:
           toolchains: arm-zephyr-eabi
           sdk-version: 0.16.3
   
-      - name: Install micro-ROS build deps (pip)
+      - name: Install micro-ROS build deps
         run: |
           python3 -m pip install --upgrade pip setuptools wheel
-          pip3 install colcon-common-extensions empy lark-parser catkin_pkg vcstool PyYAML ament_package
-  
+          # 只裝 micro-ROS Zephyr 模組需要的套件（官方 README）
+          python3 -m pip install --user colcon-common-extensions empy lark-parser catkin_pkg PyYAML
+          # 把 ~/.local/bin 放進 PATH，讓 CMake 外掛能找到 "colcon"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Sanity check colcon on PATH
+        run: |
+          set -euo pipefail
+          which colcon
+          colcon --version
+      - name: Verify micro-ROS module checkout
+        run: |
+          set -euo pipefail
+          west list | grep -i micro || true
+          test -d modules/libmicroros
+      
+      # 若專案內含 libmicroros.mk，就先行預抓（有保護，不會在缺檔時失敗）
+      - name: Prefetch micro-ROS sources (optional)
+        run: |
+          set -euo pipefail
+          MF="modules/libmicroros/modules/libmicroros/libmicroros.mk"
+          if [ -f "$MF" ]; then
+            make -f "$MF" download
+          else
+            echo "No $MF, skipping prefetch (CMake will fetch during build)."
+          fi
       - name: West update (fetch modules)
         run: west update
   
