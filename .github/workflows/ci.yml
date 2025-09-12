@@ -365,6 +365,58 @@ jobs:
             build/zephyr/include/generated/**
             build/zephyr/zephyr.dts
             
+  diag-zephyr-boards:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Zephyr
+        uses: zephyrproject-rtos/action-zephyr-setup@v1
+        with:
+          app-path: app
+          toolchains: arm-zephyr-eabi
+          sdk-version: 0.16.3
+      - name: west update & list boards
+        run: |
+          set -euo pipefail
+          west update
+          west boards | tee boards.txt
+          echo "---- grep 52840 ----"
+          west boards -n 52840 | tee boards_52840.txt || true
+      - name: Upload boards listing
+        uses: actions/upload-artifact@v4
+        with:
+          name: zephyr-boards-list
+          path: |
+            boards.txt
+            boards_52840.txt
+
+  # 用 Zephyr 4.1 的新板名格式建置 nRF52840DK（純 printk app）
+  zephyr-build-nrf52840dk:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Zephyr
+        uses: zephyrproject-rtos/action-zephyr-setup@v1
+        with:
+          app-path: app
+          toolchains: arm-zephyr-eabi
+          sdk-version: 0.16.3
+      - name: Build app for nrf52840dk/nrf52840
+        run: |
+          set -euo pipefail
+          west update
+          west build app -b nrf52840dk/nrf52840 --pristine always
+      - name: Upload ELF & config
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zephyr-nrf52840dk-elf
+          if-no-files-found: warn
+          path: |
+            build/zephyr/zephyr.*
+            build/zephyr/.config
+            build/zephyr/zephyr.dts
+            
   microros-native-posix:
     runs-on: ubuntu-22.04
     defaults:
