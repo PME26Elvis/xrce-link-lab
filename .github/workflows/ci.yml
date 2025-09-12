@@ -369,6 +369,9 @@ jobs:
     container:
       image: zephyrprojectrtos/zephyr-build:v0.26.17
       options: --user 0
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
   
@@ -437,6 +440,9 @@ jobs:
     container:
       image: zephyrprojectrtos/zephyr-build:v0.26.17
       options: --user 0
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
   
