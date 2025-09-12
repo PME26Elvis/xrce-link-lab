@@ -432,12 +432,16 @@ jobs:
           toolchains: arm-zephyr-eabi
           sdk-version: 0.16.3
 
-      - name: Create isolated Zephyr 4.0.0 workspace (z4_ws)
+      - name: Create isolated Zephyr 4.0.0 workspace OUTSIDE repo
         run: |
           set -euo pipefail
-          rm -rf z4_ws
-          west init -m https://github.com/zephyrproject-rtos/zephyr --mr v4.0.0 z4_ws
-          cd z4_ws
+          WS="${RUNNER_TEMP}/z4_ws"
+          rm -rf "$WS"
+          mkdir -p "$WS"
+          echo "Workspace: $WS"
+          cd "$WS"
+          # 初始化在 WS（不是 repo 根目錄）
+          west init -m https://github.com/zephyrproject-rtos/zephyr --mr v4.0.0 .
           west update
           west zephyr-export
           west --version
@@ -451,23 +455,25 @@ jobs:
           python3 -m pip install --user --no-cache-dir colcon-common-extensions empy lark-parser catkin_pkg PyYAML
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      - name: Fetch micro_ros_zephyr_module (kilted) into z4_ws
+      - name: Fetch micro_ros_zephyr_module (kilted) into isolated workspace
         run: |
           set -euo pipefail
-          rm -rf z4_ws/modules/libmicroros
-          git clone --depth 1 -b kilted https://github.com/micro-ROS/micro_ros_zephyr_module.git z4_ws/modules/libmicroros
-          test -f z4_ws/modules/libmicroros/prj.conf
+          WS="${RUNNER_TEMP}/z4_ws"
+          rm -rf "$WS/modules/libmicroros"
+          git clone --depth 1 -b kilted https://github.com/micro-ROS/micro_ros_zephyr_module.git "$WS/modules/libmicroros"
+          test -f "$WS/modules/libmicroros/prj.conf"
 
       - name: Build micro-ROS (nRF52840 @ Zephyr 4.0.0)
-        working-directory: z4_ws
         env:
-          ZEPHYR_MODULES: ${{ github.workspace }}/z4_ws/modules/libmicroros
+          ZEPHYR_MODULES: ${{ runner.temp }}/z4_ws/modules/libmicroros
         run: |
           set -euo pipefail
+          WS="${RUNNER_TEMP}/z4_ws"
+          cd "$WS"
           rm -rf build
           west build modules/libmicroros -b nrf52840dk/nrf52840 --pristine \
             -- -DDTC_OVERLAY_FILE="${GITHUB_WORKSPACE}/app/empty.overlay" \
-               -DCONF_FILE="${GITHUB_WORKSPACE}/z4_ws/modules/libmicroros/prj.conf;${GITHUB_WORKSPACE}/app/relax.conf"
+               -DCONF_FILE="${WS}/modules/libmicroros/prj.conf;${GITHUB_WORKSPACE}/app/relax.conf"
           file build/zephyr/zephyr.elf || true
           file build/zephyr/zephyr.hex || true
 
@@ -478,11 +484,11 @@ jobs:
           name: microros-nrf52840-z4_0
           if-no-files-found: warn
           path: |
-            z4_ws/build/zephyr/zephyr.*
-            z4_ws/build/zephyr/.config
-            z4_ws/build/zephyr/zephyr.dts
-            z4_ws/build/build.log
-            z4_ws/boards_52840.txt
+            ${RUNNER_TEMP}/z4_ws/build/zephyr/zephyr.*
+            ${RUNNER_TEMP}/z4_ws/build/zephyr/.config
+            ${RUNNER_TEMP}/z4_ws/build/zephyr/zephyr.dts
+            ${RUNNER_TEMP}/z4_ws/build/build.log
+            ${RUNNER_TEMP}/z4_ws/boards_52840.txt
 
   microros-zephyr-stm32l475-build:
     runs-on: ubuntu-22.04
