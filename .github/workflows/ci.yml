@@ -408,11 +408,6 @@ jobs:
           # 清 pip 快取（保險）
           rm -rf ~/.cache/pip || true
           df -h
-          
-      - name: Freeze manifest (diagnose exact SHAs)
-        run: |
-          west manifest --freeze > west-frozen.yml
-          sed -n '1,200p' west-frozen.yml
 
       - name: Diagnose module presence (non-fatal)
         run: |
@@ -521,11 +516,6 @@ jobs:
           # 清 pip 快取（保險）
           rm -rf ~/.cache/pip || true
           df -h
-
-      - name: Freeze manifest (diagnose exact SHAs)
-        run: |
-          west manifest --freeze > west-frozen.yml
-          sed -n '1,200p' west-frozen.yml
 
       - name: Build micro-ROS app (native_posix)
         run: |
