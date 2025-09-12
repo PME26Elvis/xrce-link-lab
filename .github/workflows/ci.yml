@@ -369,41 +369,40 @@ jobs:
     steps:
       - uses: actions/checkout@v4
   
-      # 官方 action：裝 SDK + 初始化 west 工作區
-      - name: Setup Zephyr (minimal fetch)
+      - name: Setup Zephyr (SDK + west workspace)
         uses: zephyrproject-rtos/action-zephyr-setup@v1
         with:
           app-path: app
           toolchains: arm-zephyr-eabi
           sdk-version: 0.16.3
-          west-version: 1.3.0
-          # 盡量少抓：排除 hal/tool/bootloader/babblesim
-          west-group-filter: -hal,-tools,-bootloader,-babblesim
-          # 只保留我們要的兩個 project
-          west-project-filter: +zephyr,+micro_ros_zephyr_module
+          # 不再用任何 filter，先求穩；空間若吃緊我們再縮
   
-      # micro-ROS 模組 README 建議安裝的 Python 依賴
       - name: Install micro-ROS build deps
         run: |
           python3 -m pip install --upgrade pip setuptools wheel
-          python3 -m pip install --user colcon-common-extensions empy lark-parser catkin_pkg PyYAML
+          python3 -m pip install --user --no-cache-dir colcon-common-extensions empy lark-parser catkin_pkg PyYAML
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
   
-      # 印出 manifest 供診斷（確認 extension 應該已註冊）
-      - name: Show west env
-        run: |
-          west --version
-          west topdir
-          west list | sed -n '1,80p'
-          # 檢查 west.yml 內容
-          sed -n '1,120p' app/west.yml
-  
-      # 直接用 west build（此時若仍出現 unknown command build，幾乎可確定 west.yml 缺 west-commands）
-      - name: Build micro-ROS sample (native_posix)
+      # ① 直接把模組抓到 modules/libmicroros（不碰 west.yml）
+      - name: Fetch micro_ros_zephyr_module (shallow)
         run: |
           set -euo pipefail
+          rm -rf modules/libmicroros
+          git clone --depth 1 -b kilted https://github.com/micro-ROS/micro_ros_zephyr_module.git modules/libmicroros
+          test -f modules/libmicroros/CMakeLists.txt
+          test -f modules/libmicroros/prj.conf
+  
+      # ② 用 ZEPHYR_MODULES 暫時註冊這個模組，然後 west build
+      - name: Build micro-ROS sample (native_posix)
+        env:
+          ZEPHYR_MODULES: ${{ github.workspace }}/modules/libmicroros
+        run: |
+          set -euo pipefail
+          west --version
+          west list | sed -n '1,80p'
+          rm -rf build && mkdir -p build
           west build modules/libmicroros -b native_posix --pristine always \
-            -- -DDTC_OVERLAY_FILE="$GITHUB_WORKSPACE/app/empty.overlay"
+            -- -DDTC_OVERLAY_FILE="${GITHUB_WORKSPACE}/app/empty.overlay"
           # 保存關鍵輸出
           mkdir -p artifacts
           cp -f build/zephyr/.config artifacts/.config || true
@@ -418,6 +417,7 @@ jobs:
             build/build.log
             artifacts/**
           if-no-files-found: warn
+
 
   # zephyr-build-microros-qemu:
   #   runs-on: ubuntu-22.04
