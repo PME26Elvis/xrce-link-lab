@@ -417,6 +417,68 @@ jobs:
             build/zephyr/.config
             build/zephyr/zephyr.dts
             
+  microros-zephyr-stm32l475-build:
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Zephyr (SDK + west workspace)
+        uses: zephyrproject-rtos/action-zephyr-setup@v1
+        with:
+          app-path: app
+          toolchains: arm-zephyr-eabi
+          sdk-version: 0.16.3
+
+      - name: Install micro-ROS build deps (per module README)
+        run: |
+          set -euo pipefail
+          python3 -m pip install --upgrade pip setuptools wheel
+          python3 -m pip install --user --no-cache-dir colcon-common-extensions empy lark-parser catkin_pkg PyYAML
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Fetch micro_ros_zephyr_module (kilted, shallow)
+        run: |
+          set -euo pipefail
+          rm -rf modules/libmicroros
+          git clone --depth 1 -b kilted https://github.com/micro-ROS/micro_ros_zephyr_module.git modules/libmicroros
+          test -f modules/libmicroros/CMakeLists.txt
+          test -f modules/libmicroros/prj.conf
+          test -f modules/libmicroros/app.overlay
+
+      - name: West update (ensure Zephyr modules complete)
+        run: |
+          set -euo pipefail
+          west update
+          west --version
+          west list | sed -n '1,120p'
+
+      - name: Build micro-ROS module for STM32 Disco L475 IoT (ELF only)
+        env:
+          ZEPHYR_MODULES: ${{ github.workspace }}/modules/libmicroros
+        run: |
+          set -euo pipefail
+          rm -rf build
+          # 這支 app.overlay 原生就是給 disco_l475_iot1，用它即可
+          west build modules/libmicroros -b disco_l475_iot1 --pristine \
+            -- -DDTC_OVERLAY_FILE="${GITHUB_WORKSPACE}/modules/libmicroros/app.overlay"
+          file build/zephyr/zephyr.elf || true
+          file build/zephyr/zephyr.hex || true
+
+      - name: Upload micro-ROS (STM32L475) build artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: microros-stm32l475-build
+          if-no-files-found: warn
+          path: |
+            build/zephyr/zephyr.*
+            build/zephyr/.config
+            build/zephyr/zephyr.dts
+            build/build.log
+
   microros-zephyr-nrf52840-build:
     runs-on: ubuntu-22.04
     defaults:
