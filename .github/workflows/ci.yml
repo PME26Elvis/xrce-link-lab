@@ -382,13 +382,14 @@ jobs:
           # 只裝 micro-ROS Zephyr 模組需要的套件（官方 README）
           python3 -m pip install --user colcon-common-extensions empy lark-parser catkin_pkg PyYAML
           # 把 ~/.local/bin 放進 PATH，讓 CMake 外掛能找到 "colcon"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-    - name: Sanity check colcon on PATH
-      run: |
-        set -euo pipefail
-        which colcon
-        colcon --help | head -n 40
-        colcon list --help | head -n 20
+      - name: Sanity check colcon on PATH
+        run: |
+          set -euo pipefail
+          which colcon
+          colcon --help | head -n 40
+          colcon list --help | head -n 20
+
+      - name: Verify micro-ROS module checkout
         run: |
           set -euo pipefail
           west list | grep -i micro || true
@@ -497,6 +498,7 @@ jobs:
           which colcon
           colcon --help | head -n 40
           colcon list --help | head -n 20
+
       - name: Verify micro-ROS module checkout
         run: |
           set -euo pipefail
