@@ -491,17 +491,28 @@ jobs:
           pip3 install --no-cache-dir --user colcon-common-extensions empy lark-parser catkin_pkg PyYAML vcstool
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      - name: Init west workspace from app/west.yml (stable fetch)
+      - name: Init west workspace from app/west.yml (targeted update)
         run: |
           set -euo pipefail
           west init -l app
-          # 先用最穩定的 full fetch，避免某些專案在淺抓時失敗
-          west -v update
+          # 只抓 Zephyr 本體，確保 west 的擴充子命令可用
+          west -v update zephyr --fetch-opt=--depth=1 --fetch-opt=--no-tags
+          # 只抓 micro-ROS Zephyr 模組（你 manifest 裡叫 micro_ros_zephyr_module）
+          west -v update micro_ros_zephyr_module --fetch-opt=--depth=1 --fetch-opt=--no-tags
           west zephyr-export
-          west --version
-          west topdir
-          west list | sed -n '1,120p'
-
+          echo "== west list (確認只有兩個主要專案) =="
+          west list | grep -E '(^zephyr\s|micro_ros_zephyr_module)' || true
+          echo "== 空間檢查 =="
+          df -h
+          
+      - name: Trim git metadata (optional, if still low on space)
+        run: |
+          set -euo pipefail
+          df -h
+          # 只保留 zephyr 與 micro_ros_zephyr_module 的工作樹，其餘沒抓也沒有
+          find zephyr modules -type d -name .git -prune -exec rm -rf {} +
+          df -h
+    
       - name: Build micro-ROS app (native_posix)
         run: |
           set -euo pipefail
