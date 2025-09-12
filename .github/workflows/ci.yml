@@ -462,26 +462,29 @@ jobs:
           set -euo pipefail
           rm -rf build
           
-          # （診斷）看一眼模組預設 overlay；我們不用它
-          sed -n '1,120p' modules/libmicroros/app.overlay || true
+          # （診斷）看看模組自帶 overlay；我們不用它
+          sed -n '1,80p' modules/libmicroros/app.overlay || true
           
-          # 關閉「警告即錯誤」— 有些分支讀 env，有些讀 CMake 變數
+          # 1) 關閉「警告即錯誤」的所有路徑（不同 Zephyr 版本可能讀不同旗標）
           export KCONFIG_WARN_AS_ERROR=0
+          
+          # 2) 用 CONF_FILE 明確指定合併順序，確保 relax.conf 在最後覆蓋模組的 prj.conf
+          APP_PRJ="${GITHUB_WORKSPACE}/modules/libmicroros/prj.conf"
+          RELAX="${GITHUB_WORKSPACE}/app/relax.conf"
+          CONF_MERGED="${APP_PRJ};${RELAX}"
           
           west build modules/libmicroros -b nrf52840dk/nrf52840 -p \
             -- -DDTC_OVERLAY_FILE="${GITHUB_WORKSPACE}/app/empty.overlay" \
-               -DOVERLAY_CONFIG="${GITHUB_WORKSPACE}/app/relax.conf" \
+               -DCONF_FILE="${CONF_MERGED}" \
                -DKCONFIG_WARN_AS_ERROR=0 \
                -DKCONFIG_TREAT_WARNINGS_AS_ERRORS=0
           
-          echo "===== grep merged .config keys ====="
+          echo "===== sanity: merged .config keys ====="
           grep -E "KCONFIG_WARN_AS_ERROR=|POSIX_CLOCK=|UART_0_ENHANCED_POLL_OUT=|CLOCK_CONTROL_NRF_K32SRC_(XTAL|RC)=" build/zephyr/.config || true
           
           # 存證
           file build/zephyr/zephyr.elf || true
           file build/zephyr/zephyr.hex || true
-
-
           
       - name: Upload micro-ROS (nRF52840) build artifacts
         if: always()
