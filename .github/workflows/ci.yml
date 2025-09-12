@@ -384,11 +384,25 @@ jobs:
       - name: West update (fetch micro-ROS module)
         run: |
           west update
-      
+      - name: Verify micro-ROS module is present (west list + path guard)
+        run: |
+          set -euo pipefail
+          echo "---- west list (grep micro) ----"
+          west list | grep -i micro || true
+          echo "---- tree check ----"
+          test -f modules/libmicroros/libmicroros.mk || {
+            echo "::error:: micro_ros_zephyr_module is NOT present at modules/libmicroros."
+            echo "Check app/west.yml has a 'projects' entry with:"
+            echo "  name: micro_ros_zephyr_module / path: modules/libmicroros / revision: kilted"
+            exit 2
+          }
       - name: Prefetch micro-ROS sources (uros.repos)
         run: |
           make -f modules/libmicroros/libmicroros.mk download
-
+      - name: Show micro-ROS tree (sanity)
+        run: |
+          ls -la modules/libmicroros || true
+          ls -la modules/libmicroros/modules/libmicroros || true
       - name: Build micro-ROS sample app (native_posix)
         run: |
           west build modules/libmicroros -b native_posix --pristine always -- \
@@ -457,11 +471,25 @@ jobs:
 
       - name: West update (fetch micro-ROS module)
         run: west update
-        
+      - name: Verify micro-ROS module is present (west list + path guard)
+        run: |
+          set -euo pipefail
+          echo "---- west list (grep micro) ----"
+          west list | grep -i micro || true
+          echo "---- tree check ----"
+          test -f modules/libmicroros/libmicroros.mk || {
+            echo "::error:: micro_ros_zephyr_module is NOT present at modules/libmicroros."
+            echo "Check app/west.yml has a 'projects' entry with:"
+            echo "  name: micro_ros_zephyr_module / path: modules/libmicroros / revision: kilted"
+            exit 2
+          }      
       - name: Prefetch micro-ROS sources (uros.repos)
         run: |
           make -f modules/libmicroros/libmicroros.mk download
-
+      - name: Show micro-ROS tree (sanity)
+        run: |
+          ls -la modules/libmicroros || true
+          ls -la modules/libmicroros/modules/libmicroros || true
       - name: Build micro-ROS app (native_posix / host-udp)
         run: |
           west build modules/libmicroros -b native_posix --pristine always -- \
