@@ -389,15 +389,18 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
   
-      - name: Init west workspace from app/west.yml (narrow fetch)
+      - name: Init west workspace from app/west.yml (shallow fetch)
         run: |
           set -euo pipefail
           west init -l app
-          # 盡量瘦：partial clone + depth 1 + no-tags；若選項不支援就 fallback
-          west update --narrow --fetch-opt=--depth=1 --fetch-opt=--filter=blob:none --fetch-opt=--no-tags || \
-          west update --fetch-opt=--depth=1 || \
-          west update
+          # 1) 先把 Zephyr 本體抓齊（depth=1，但不做 blob:none/narrow，否則 west_commands 會缺）
+          west update zephyr --fetch-opt=--depth=1 --fetch-opt=--no-tags
+          # 2) 其餘專案用淺抓（避免爆空間），不再用 --narrow/--filter=blob:none 以免缺檔
+          west update --fetch-opt=--depth=1 --fetch-opt=--no-tags
           west zephyr-export
+          west --version
+          west topdir
+          west list | sed -n '1,80p'
           
       - name: Free space (prune git metadata and caches)
         run: |
@@ -497,25 +500,18 @@ jobs:
           pip3 install --no-cache-dir --user colcon-common-extensions empy lark-parser catkin_pkg PyYAML vcstool
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      - name: Init west workspace from app/west.yml (narrow fetch)
+      - name: Init west workspace from app/west.yml (shallow fetch)
         run: |
           set -euo pipefail
           west init -l app
-          # 盡量瘦：partial clone + depth 1 + no-tags；若選項不支援就 fallback
-          west update --narrow --fetch-opt=--depth=1 --fetch-opt=--filter=blob:none --fetch-opt=--no-tags || \
-          west update --fetch-opt=--depth=1 || \
-          west update
+          # 1) 先把 Zephyr 本體抓齊（depth=1，但不做 blob:none/narrow，否則 west_commands 會缺）
+          west update zephyr --fetch-opt=--depth=1 --fetch-opt=--no-tags
+          # 2) 其餘專案用淺抓（避免爆空間），不再用 --narrow/--filter=blob:none 以免缺檔
+          west update --fetch-opt=--depth=1 --fetch-opt=--no-tags
           west zephyr-export
-          
-      - name: Free space (prune git metadata and caches)
-        run: |
-          set -euo pipefail
-          df -h
-          # 移除所有 .git 以保留工作樹（建置不需要 .git）
-          find zephyr modules -type d -name .git -prune -exec rm -rf {} +
-          # 清 pip 快取（保險）
-          rm -rf ~/.cache/pip || true
-          df -h
+          west --version
+          west topdir
+          west list | sed -n '1,80p'
 
       - name: Build micro-ROS app (native_posix)
         run: |
@@ -525,6 +521,7 @@ jobs:
             -DDTC_OVERLAY_FILE="$GITHUB_WORKSPACE/app/empty.overlay" \
           2>&1 | tee build/build.log
         # 緊接一個步驟，把最後 300 行印出來（失敗時尤其重要）
+        
       - name: Show last lines of build.log (on failure too)
         if: always()
         run: |
@@ -561,6 +558,17 @@ jobs:
             agent.log
             app.out
           if-no-files-found: warn
+          
+      - name: Free space (prune git metadata and caches)
+        run: |
+          set -euo pipefail
+          df -h
+          # 移除所有 .git 以保留工作樹（建置不需要 .git）
+          find zephyr modules -type d -name .git -prune -exec rm -rf {} +
+          # 清 pip 快取（保險）
+          rm -rf ~/.cache/pip || true
+          df -h
+          
       - name: Show last lines of build.log (always)
         if: always()
         run: |
