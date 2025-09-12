@@ -382,6 +382,15 @@ jobs:
           # 只裝 micro-ROS Zephyr 模組需要的套件（官方 README）
           python3 -m pip install --user colcon-common-extensions empy lark-parser catkin_pkg PyYAML
           # 把 ~/.local/bin 放進 PATH，讓 CMake 外掛能找到 "colcon"
+      - name: Ensure ~/.local/bin on PATH (for colcon)
+        run: |
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Sanity check colcon on PATH
+        run: |
+          set -euo pipefail
+          which colcon
+          colcon list --help | head -n 20
+
       - name: Sanity check colcon on PATH
         run: |
           set -euo pipefail
@@ -389,23 +398,15 @@ jobs:
           colcon --help | head -n 40
           colcon list --help | head -n 20
 
-      - name: Verify micro-ROS module checkout
+      - name: Verify micro-ROS module is present (files exist)
         run: |
           set -euo pipefail
-          west list | grep -i micro || true
-          test -d modules/libmicroros
+          test -f modules/libmicroros/prj.conf
+          test -f modules/libmicroros/app-colcon.meta
+          test -f modules/libmicroros/src/main.c
+          echo "micro_ros_zephyr_module looks present."
+
       
-      # 若專案內含 libmicroros.mk，就先行預抓（有保護，不會在缺檔時失敗）
-      - name: Prefetch micro-ROS sources (optional)
-        run: |
-          set -euo pipefail
-          MF="modules/libmicroros/modules/libmicroros/libmicroros.mk"
-          if [ -f "$MF" ]; then
-            make -f "$MF" download
-          else
-            echo "No $MF, skipping prefetch (CMake will fetch during build)."
-          fi
-  
       - name: West update (fetch modules)
         run: west update
   
@@ -427,9 +428,9 @@ jobs:
       - name: Build micro-ROS sample app (native_posix)
         run: |
           west build modules/libmicroros -b native_posix --pristine always -- \
-            -DCONF_FILE="$GITHUB_WORKSPACE/modules/libmicroros/host-udp.conf" \
+            -DCONF_FILE="$GITHUB_WORKSPACE/modules/libmicroros/prj.conf;$GITHUB_WORKSPACE/modules/libmicroros/host-udp.conf" \
             -DDTC_OVERLAY_FILE="$GITHUB_WORKSPACE/app/empty.overlay"
-      
+
       - name: Verify rcl headers are present
         run: |
           set -euo pipefail
@@ -492,6 +493,14 @@ jobs:
           python3 -m pip install --user colcon-common-extensions empy lark-parser catkin_pkg PyYAML
           # 把 ~/.local/bin 放進 PATH，讓 CMake 外掛能找到 "colcon"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Ensure ~/.local/bin on PATH (for colcon)
+        run: |
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Sanity check colcon on PATH
+        run: |
+          set -euo pipefail
+          which colcon
+          colcon list --help | head -n 20
       - name: Sanity check colcon on PATH
         run: |
           set -euo pipefail
@@ -499,39 +508,24 @@ jobs:
           colcon --help | head -n 40
           colcon list --help | head -n 20
 
-      - name: Verify micro-ROS module checkout
+      - name: Verify micro-ROS module is present (files exist)
         run: |
           set -euo pipefail
-          west list | grep -i micro || true
-          test -d modules/libmicroros
+          test -f modules/libmicroros/prj.conf
+          test -f modules/libmicroros/app-colcon.meta
+          test -f modules/libmicroros/src/main.c
+          echo "micro_ros_zephyr_module looks present."
+
       
-      # 若專案內含 libmicroros.mk，就先行預抓（有保護，不會在缺檔時失敗）
-      - name: Prefetch micro-ROS sources (optional)
-        run: |
-          set -euo pipefail
-          MF="modules/libmicroros/modules/libmicroros/libmicroros.mk"
-          if [ -f "$MF" ]; then
-            make -f "$MF" download
-          else
-            echo "No $MF, skipping prefetch (CMake will fetch during build)."
-          fi
       - name: West update (fetch modules)
         run: west update
-  
-      - name: Prefetch & build micro-ROS (colcon via makefile)
-        run: |
-          set -euo pipefail
-          MF=modules/libmicroros/modules/libmicroros/libmicroros.mk
-          test -f "$MF" || { echo "::error:: $MF not found"; exit 2; }
-          make -f "$MF" download
-          make -f "$MF" build
-          test -f modules/libmicroros/modules/libmicroros/micro_ros_src/install/include/rcl/rcl.h
   
       - name: Build micro-ROS sample app (native_posix)
         run: |
           west build modules/libmicroros -b native_posix --pristine always -- \
-            -DCONF_FILE="$GITHUB_WORKSPACE/modules/libmicroros/host-udp.conf" \
+            -DCONF_FILE="$GITHUB_WORKSPACE/modules/libmicroros/prj.conf;$GITHUB_WORKSPACE/modules/libmicroros/host-udp.conf" \
             -DDTC_OVERLAY_FILE="$GITHUB_WORKSPACE/app/empty.overlay"
+
       
       - name: Verify rcl headers are present
         run: |
