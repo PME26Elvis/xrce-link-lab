@@ -385,16 +385,30 @@ jobs:
       - name: Install micro-ROS build deps (per module README)
         run: |
           python3 -m pip install --upgrade pip setuptools wheel
-          # 加上 vcstool，colcon 會用到 vcs import
-          pip3 install --user colcon-common-extensions empy lark-parser catkin_pkg PyYAML vcstool
+          pip3 install --no-cache-dir --user colcon-common-extensions empy lark-parser catkin_pkg PyYAML vcstool
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
   
-      - name: Init west workspace from app/west.yml
+      - name: Init west workspace from app/west.yml (narrow fetch)
         run: |
           set -euo pipefail
           west init -l app
+          # 盡量瘦：partial clone + depth 1 + no-tags；若選項不支援就 fallback
+          west update --narrow --fetch-opt=--depth=1 --fetch-opt=--filter=blob:none --fetch-opt=--no-tags || \
+          west update --fetch-opt=--depth=1 || \
           west update
           west zephyr-export
+          
+      - name: Free space (prune git metadata and caches)
+        run: |
+          set -euo pipefail
+          df -h
+          # 移除所有 .git 以保留工作樹（建置不需要 .git）
+          find zephyr modules -type d -name .git -prune -exec rm -rf {} +
+          # 清 pip 快取（保險）
+          rm -rf ~/.cache/pip || true
+          df -h
+          
       - name: Freeze manifest (diagnose exact SHAs)
         run: |
           west manifest --freeze > west-frozen.yml
@@ -447,6 +461,19 @@ jobs:
             build/zephyr/zephyr.elf
             build/zephyr/zephyr.dts
           if-no-files-found: warn
+      - name: Cleanup workspace after build (keep artifacts)
+        if: always()
+        run: |
+          rm -rf zephyr modules || true
+          rm -rf build || true
+          rm -rf ~/.cache/pip || true
+          df -h
+      - name: Show last lines of build.log (always)
+        if: always()
+        run: |
+          echo "===== tail build/build.log ====="
+          tail -n 300 build/build.log || true
+
   microros-hostudp-e2e:
     runs-on: ubuntu-22.04
     container:
@@ -472,16 +499,29 @@ jobs:
       - name: Install micro-ROS build deps (per module README)
         run: |
           python3 -m pip install --upgrade pip setuptools wheel
-          # 加上 vcstool，colcon 會用到 vcs import
-          pip3 install --user colcon-common-extensions empy lark-parser catkin_pkg PyYAML vcstool
+          pip3 install --no-cache-dir --user colcon-common-extensions empy lark-parser catkin_pkg PyYAML vcstool
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-  
-      - name: Init west workspace from app/west.yml
+
+      - name: Init west workspace from app/west.yml (narrow fetch)
         run: |
           set -euo pipefail
           west init -l app
+          # 盡量瘦：partial clone + depth 1 + no-tags；若選項不支援就 fallback
+          west update --narrow --fetch-opt=--depth=1 --fetch-opt=--filter=blob:none --fetch-opt=--no-tags || \
+          west update --fetch-opt=--depth=1 || \
           west update
           west zephyr-export
+          
+      - name: Free space (prune git metadata and caches)
+        run: |
+          set -euo pipefail
+          df -h
+          # 移除所有 .git 以保留工作樹（建置不需要 .git）
+          find zephyr modules -type d -name .git -prune -exec rm -rf {} +
+          # 清 pip 快取（保險）
+          rm -rf ~/.cache/pip || true
+          df -h
+
       - name: Freeze manifest (diagnose exact SHAs)
         run: |
           west manifest --freeze > west-frozen.yml
@@ -531,3 +571,8 @@ jobs:
             agent.log
             app.out
           if-no-files-found: warn
+      - name: Show last lines of build.log (always)
+        if: always()
+        run: |
+          echo "===== tail build/build.log ====="
+          tail -n 300 build/build.log || true
