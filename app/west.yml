@@ -2,14 +2,16 @@ manifest:
   remotes:
     - name: zephyrproject-rtos
       url-base: https://github.com/zephyrproject-rtos
+    - name: microros
+      url-base: https://github.com/micro-ROS
   projects:
     - name: zephyr
       remote: zephyrproject-rtos
       revision: v4.1.0
-      import: true
-    # === micro-ROS Zephyr module ===
+      import:
+        path: west.yml
     - name: micro_ros_zephyr_module
-      url: https://github.com/micro-ROS/micro_ros_zephyr_module.git
+      remote: microros
       revision: kilted
       path: modules/libmicroros
   self:
