@@ -428,6 +428,15 @@ jobs:
           west build modules/libmicroros -b native_posix --pristine always -- \
             -DCONF_FILE="$GITHUB_WORKSPACE/modules/libmicroros/host-udp.conf" \
             -DDTC_OVERLAY_FILE="$GITHUB_WORKSPACE/app/empty.overlay"
+      
+      - name: Verify rcl headers are present
+        run: |
+          set -euo pipefail
+          echo "Searching for rcl/rcl.h under workspace ..."
+          if ! find modules/libmicroros -path '*/install/*' -name rcl.h -print -quit; then
+            echo "::error:: rcl.h not found. colcon likely did not run. Check previous step logs."
+            exit 1
+          fi
   
       - name: Inspect merged Kconfig (micro-ROS / transport)
         if: always()
@@ -515,11 +524,20 @@ jobs:
           make -f "$MF" build
           test -f modules/libmicroros/modules/libmicroros/micro_ros_src/install/include/rcl/rcl.h
   
-      - name: Build micro-ROS app (native_posix / host-udp)
+      - name: Build micro-ROS sample app (native_posix)
         run: |
           west build modules/libmicroros -b native_posix --pristine always -- \
             -DCONF_FILE="$GITHUB_WORKSPACE/modules/libmicroros/host-udp.conf" \
             -DDTC_OVERLAY_FILE="$GITHUB_WORKSPACE/app/empty.overlay"
+      
+      - name: Verify rcl headers are present
+        run: |
+          set -euo pipefail
+          echo "Searching for rcl/rcl.h under workspace ..."
+          if ! find modules/libmicroros -path '*/install/*' -name rcl.h -print -quit; then
+            echo "::error:: rcl.h not found. colcon likely did not run. Check previous step logs."
+            exit 1
+          fi
   
       - name: Run Agent (udp4:8888) and app, collect logs
         run: |
