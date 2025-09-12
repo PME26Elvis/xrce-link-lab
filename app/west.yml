@@ -1,20 +1,21 @@
 manifest:
+  version: 0.14
+  self:
+    path: app
+
   remotes:
     - name: zephyrproject-rtos
       url-base: https://github.com/zephyrproject-rtos
+    - name: microros
+      url-base: https://github.com/micro-ROS
 
   projects:
-    # Zephyr 主專案，固定 v4.1.0，並 import 它自己的 west.yml（官方建議）
     - name: zephyr
       remote: zephyrproject-rtos
       revision: v4.1.0
-      import: true
+      west-commands: scripts/west_commands
 
-    # micro-ROS Zephyr 模組：採用「直接 url」避免 remote 名稱/URL-base 變數
     - name: micro_ros_zephyr_module
-      url: https://github.com/micro-ROS/micro_ros_zephyr_module.git
+      remote: microros
       revision: kilted
       path: modules/libmicroros
-
-  self:
-    path: app
