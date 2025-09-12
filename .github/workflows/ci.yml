@@ -417,6 +417,75 @@ jobs:
             build/zephyr/.config
             build/zephyr/zephyr.dts
             
+  microros-zephyr-nrf52840-build:
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Zephyr (SDK + west workspace)
+        uses: zephyrproject-rtos/action-zephyr-setup@v1
+        with:
+          app-path: app
+          toolchains: arm-zephyr-eabi
+          sdk-version: 0.16.3
+
+      - name: Install micro-ROS build deps (per module README)
+        run: |
+          set -euo pipefail
+          python3 -m pip install --upgrade pip setuptools wheel
+          python3 -m pip install --user --no-cache-dir colcon-common-extensions empy lark-parser catkin_pkg
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Fetch micro_ros_zephyr_module (kilted, shallow)
+        run: |
+          set -euo pipefail
+          rm -rf modules/libmicroros
+          git clone --depth 1 -b kilted https://github.com/micro-ROS/micro_ros_zephyr_module.git modules/libmicroros
+          test -f modules/libmicroros/CMakeLists.txt
+          test -f modules/libmicroros/prj.conf
+          test -f modules/libmicroros/app.overlay
+
+      - name: West update (ensure Zephyr modules complete)
+        run: |
+          set -euo pipefail
+          west update
+          west --version
+          west list | sed -n '1,120p'
+
+      - name: Build micro-ROS module for nRF52840DK (ELF only)
+        env:
+          ZEPHYR_MODULES: ${{ github.workspace }}/modules/libmicroros
+        run: |
+          set -euo pipefail
+          rm -rf build
+          
+          # 看一眼模組預設 overlay（會含 STM32 的節點，我們不用它）
+          sed -n '1,120p' modules/libmicroros/app.overlay || true
+          
+          # 用空的 DTS overlay + 放寬 Kconfig 規則的 overlay config
+          west build modules/libmicroros -b nrf52840dk/nrf52840 -p \
+            -- -DDTC_OVERLAY_FILE="${GITHUB_WORKSPACE}/app/empty.overlay" \
+               -DOVERLAY_CONFIG="${GITHUB_WORKSPACE}/app/relax.conf"
+          
+          # 存證
+          file build/zephyr/zephyr.elf || true
+          file build/zephyr/zephyr.hex || true
+          
+      - name: Upload micro-ROS (nRF52840) build artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: microros-nrf52840-build
+          if-no-files-found: warn
+          path: |
+            build/zephyr/zephyr.*
+            build/zephyr/.config
+            build/zephyr/zephyr.dts
+            build/build.log
+
   microros-native-posix:
     runs-on: ubuntu-22.04
     defaults:
@@ -505,69 +574,6 @@ jobs:
             build/zephyr/.config
           if-no-files-found: warn
 
-  microros-zephyr-nrf52840-build:
-    runs-on: ubuntu-22.04
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Zephyr (SDK + west workspace)
-        uses: zephyrproject-rtos/action-zephyr-setup@v1
-        with:
-          app-path: app
-          toolchains: arm-zephyr-eabi
-          sdk-version: 0.16.3
-
-      - name: Install micro-ROS build deps (per module README)
-        run: |
-          set -euo pipefail
-          python3 -m pip install --upgrade pip setuptools wheel
-          python3 -m pip install --user --no-cache-dir colcon-common-extensions empy lark-parser catkin_pkg
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
-      - name: Fetch micro_ros_zephyr_module (kilted, shallow)
-        run: |
-          set -euo pipefail
-          rm -rf modules/libmicroros
-          git clone --depth 1 -b kilted https://github.com/micro-ROS/micro_ros_zephyr_module.git modules/libmicroros
-          test -f modules/libmicroros/CMakeLists.txt
-          test -f modules/libmicroros/prj.conf
-          test -f modules/libmicroros/app.overlay
-
-      - name: West update (ensure Zephyr modules complete)
-        run: |
-          set -euo pipefail
-          west update
-          west --version
-          west list | sed -n '1,120p'
-
-      - name: Build micro-ROS module for nRF52840DK (ELF only)
-        env:
-          ZEPHYR_MODULES: ${{ github.workspace }}/modules/libmicroros
-        run: |
-          set -euo pipefail
-          rm -rf build
-          sed -n '1,120p' modules/libmicroros/app.overlay || true
-          
-          # 用「空 overlay」避免引用不存在的 label（之後我們再補 nRF 專用 overlay）
-          west build modules/libmicroros -b nrf52840dk/nrf52840 -p \
-            -- -DDTC_OVERLAY_FILE="${GITHUB_WORKSPACE}/app/empty.overlay"
-          file build/zephyr/zephyr.elf || true
-          file build/zephyr/zephyr.hex || true
-
-      - name: Upload micro-ROS (nRF52840) build artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: microros-nrf52840-build
-          if-no-files-found: warn
-          path: |
-            build/zephyr/zephyr.*
-            build/zephyr/.config
-            build/zephyr/zephyr.dts
-            build/build.log
 
 
 
