@@ -505,6 +505,13 @@ jobs:
           echo "== 空間檢查 =="
           df -h
           
+      - name: Sanity check Zephyr tree
+        run: |
+          set -euo pipefail
+          test -f zephyr/share/zephyr-package/cmake/ZephyrConfig.cmake || { echo "::error:: Zephyr CMake package not found."; exit 2; }
+          test -d zephyr/scripts/west_commands && echo "west_commands present (ok)" || echo "::notice:: west_commands missing (we are not using west build anyway)."
+          du -sh zephyr | awk '{print "zephyr size:", $1}'
+
       - name: Trim git metadata (optional, if still low on space)
         run: |
           set -euo pipefail
@@ -513,14 +520,21 @@ jobs:
           find zephyr modules -type d -name .git -prune -exec rm -rf {} +
           df -h
     
-      - name: Build micro-ROS app (native_posix)
+      - name: Configure (CMake) Zephyr app
         run: |
           set -euo pipefail
+          rm -rf build
           mkdir -p build
-          west -v build modules/libmicroros -b native_posix --pristine always -- \
+          cmake -B build -S modules/libmicroros -GNinja \
+            -DBOARD=native_posix \
             -DDTC_OVERLAY_FILE="$GITHUB_WORKSPACE/app/empty.overlay" \
-          2>&1 | tee build/build.log
+            -DZEPHYR_BASE="$GITHUB_WORKSPACE/zephyr"
       
+      - name: Build (Ninja)
+        run: |
+          set -euo pipefail
+          cmake --build build -v 2>&1 | tee build/build.log
+
       - name: Show last lines of build.log (on failure too)
         if: always()
         run: |
