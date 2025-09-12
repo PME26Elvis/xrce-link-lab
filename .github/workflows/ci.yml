@@ -417,6 +417,40 @@ jobs:
             build/zephyr/.config
             build/zephyr/zephyr.dts
             
+  zephyr-build-nrf52-base-app:
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Zephyr (SDK + west workspace)
+        uses: zephyrproject-rtos/action-zephyr-setup@v1
+        with:
+          app-path: app
+          toolchains: arm-zephyr-eabi
+          sdk-version: 0.16.3
+
+      - name: Build nRF52 baseline app
+        run: |
+          set -euo pipefail
+          west update
+          west build firmware/nrf52_base_app -b nrf52840dk/nrf52840 --pristine always
+          file build/zephyr/zephyr.elf || true
+          file build/zephyr/zephyr.hex || true
+
+      - name: Upload baseline ELF
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nrf52-base-elf
+          if-no-files-found: warn
+          path: |
+            build/zephyr/zephyr.*
+            build/zephyr/.config
+            build/zephyr/zephyr.dts
+
   microros-zephyr-nrf52840-build-z4_0:
     runs-on: ubuntu-22.04
     defaults:
