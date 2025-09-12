@@ -366,7 +366,9 @@ jobs:
             build/zephyr/zephyr.dts
   zephyr-build-microros-qemu:
     runs-on: ubuntu-22.04
-    container: zephyrprojectrtos/zephyr-build:v0.26.17
+    container:
+      image: zephyrprojectrtos/zephyr-build:v0.26.17
+      options: --user 0
     steps:
       - uses: actions/checkout@v4
   
@@ -432,7 +434,9 @@ jobs:
           if-no-files-found: warn
   microros-hostudp-e2e:
     runs-on: ubuntu-22.04
-    container: zephyrprojectrtos/zephyr-build:v0.26.17
+    container:
+      image: zephyrprojectrtos/zephyr-build:v0.26.17
+      options: --user 0
     steps:
       - uses: actions/checkout@v4
   
