@@ -1,5 +1,1 @@
-/ {
-    /* Intentionally empty overlay for native_posix builds.
-     * This overrides modules/libmicroros/app.overlay which expects
-     * board-specific nodes (e.g., USB OTG). */
-};
+/* Empty overlay for native_posix — keep hardware-only nodes out. */
