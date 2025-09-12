@@ -1,0 +1,5 @@
+/* 最小化：僅確保 UART0 為 console */
+&uart0 {
+    status = "okay";
+    current-speed = <115200>;
+};
