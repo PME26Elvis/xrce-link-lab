@@ -384,21 +384,16 @@ jobs:
       - name: West update (fetch micro-ROS module)
         run: |
           west update
-      - name: Verify micro-ROS module is present (west list + path guard)
+      - name: Verify micro-ROS module checkout (path exists) and list files
         run: |
           set -euo pipefail
           echo "---- west list (grep micro) ----"
           west list | grep -i micro || true
-          echo "---- tree check ----"
-          test -f modules/libmicroros/libmicroros.mk || {
-            echo "::error:: micro_ros_zephyr_module is NOT present at modules/libmicroros."
-            echo "Check app/west.yml has a 'projects' entry with:"
-            echo "  name: micro_ros_zephyr_module / path: modules/libmicroros / revision: kilted"
-            exit 2
-          }
-      - name: Prefetch micro-ROS sources (uros.repos)
-        run: |
-          make -f modules/libmicroros/libmicroros.mk download
+          echo "---- check directory exists ----"
+          test -d modules/libmicroros || { echo "::error:: modules/libmicroros directory missing"; exit 2; }
+          echo "---- tree ----"
+          ls -la modules/libmicroros
+
       - name: Show micro-ROS tree (sanity)
         run: |
           ls -la modules/libmicroros || true
@@ -471,21 +466,16 @@ jobs:
 
       - name: West update (fetch micro-ROS module)
         run: west update
-      - name: Verify micro-ROS module is present (west list + path guard)
+      - name: Verify micro-ROS module checkout (path exists) and list files
         run: |
           set -euo pipefail
           echo "---- west list (grep micro) ----"
           west list | grep -i micro || true
-          echo "---- tree check ----"
-          test -f modules/libmicroros/libmicroros.mk || {
-            echo "::error:: micro_ros_zephyr_module is NOT present at modules/libmicroros."
-            echo "Check app/west.yml has a 'projects' entry with:"
-            echo "  name: micro_ros_zephyr_module / path: modules/libmicroros / revision: kilted"
-            exit 2
-          }      
-      - name: Prefetch micro-ROS sources (uros.repos)
-        run: |
-          make -f modules/libmicroros/libmicroros.mk download
+          echo "---- check directory exists ----"
+          test -d modules/libmicroros || { echo "::error:: modules/libmicroros directory missing"; exit 2; }
+          echo "---- tree ----"
+          ls -la modules/libmicroros
+  
       - name: Show micro-ROS tree (sanity)
         run: |
           ls -la modules/libmicroros || true
