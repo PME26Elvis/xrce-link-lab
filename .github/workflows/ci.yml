@@ -462,22 +462,25 @@ jobs:
           set -euo pipefail
           rm -rf build
           
-          # 看一眼模組預設 overlay（含 STM32 節點，我們不用它）
+          # （診斷）看一眼模組預設 overlay；我們不用它
           sed -n '1,120p' modules/libmicroros/app.overlay || true
           
-          # 用空 DTS overlay + 放寬的 Kconfig overlay；並在 CMake 層關掉 warn-as-error
+          # 關閉「警告即錯誤」— 有些分支讀 env，有些讀 CMake 變數
+          export KCONFIG_WARN_AS_ERROR=0
+          
           west build modules/libmicroros -b nrf52840dk/nrf52840 -p \
             -- -DDTC_OVERLAY_FILE="${GITHUB_WORKSPACE}/app/empty.overlay" \
                -DOVERLAY_CONFIG="${GITHUB_WORKSPACE}/app/relax.conf" \
-               -DKCONFIG_WARN_AS_ERROR=0
+               -DKCONFIG_WARN_AS_ERROR=0 \
+               -DKCONFIG_TREAT_WARNINGS_AS_ERRORS=0
           
-          # 檢視合併後的 Kconfig 片段，確認我們的設定有生效
-          echo "===== grep relax keys in merged .config ====="
-          grep -E "KCONFIG_WARN_AS_ERROR|POSIX_CLOCK|UART_0_ENHANCED_POLL_OUT" build/zephyr/.config || true
+          echo "===== grep merged .config keys ====="
+          grep -E "KCONFIG_WARN_AS_ERROR=|POSIX_CLOCK=|UART_0_ENHANCED_POLL_OUT=|CLOCK_CONTROL_NRF_K32SRC_(XTAL|RC)=" build/zephyr/.config || true
           
           # 存證
           file build/zephyr/zephyr.elf || true
           file build/zephyr/zephyr.hex || true
+
 
           
       - name: Upload micro-ROS (nRF52840) build artifacts
