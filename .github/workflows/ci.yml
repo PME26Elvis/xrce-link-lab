@@ -616,9 +616,9 @@ jobs:
           name: xrce-agent-smoke
           path: agent.log
           if-no-files-found: warn
-          
-renode-agent-serial-e2e-smoke:
-  runs-on: ubuntu-22.04
+
+  renode-agent-serial-e2e-smoke:
+    runs-on: ubuntu-22.04
   defaults:
     run:
       shell: bash
@@ -670,7 +670,7 @@ renode-agent-serial-e2e-smoke:
           agent_e2e.log
         if-no-files-found: warn
 
-microros-zephyr-nrf52840-build-z4_0:
+  microros-zephyr-nrf52840-build-z4_0:
     runs-on: ubuntu-22.04
     defaults:
       run:
