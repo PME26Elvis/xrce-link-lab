@@ -536,6 +536,39 @@ jobs:
             artifacts/renode_smoke/**
             renode_run.log
           if-no-files-found: warn
+          
+  xrce-agent-smoke:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build & install Micro XRCE-DDS Agent (release deps)
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends git cmake build-essential libasio-dev libtinyxml2-dev
+          git clone --depth 1 https://github.com/eProsima/Micro-XRCE-DDS-Agent.git
+          cd Micro-XRCE-DDS-Agent && mkdir build && cd build
+          cmake .. && make -j"$(nproc)" && sudo make install && sudo ldconfig
+
+      - name: Run UDP agent briefly
+        run: |
+          set -euo pipefail
+          MicroXRCEAgent udp4 -p 8888 -v 6 > agent.log 2>&1 &
+          AG=$!
+          sleep 1
+          ss -lun | grep -q ":8888" || (echo "Agent didn't bind 8888/udp"; cat agent.log; exit 1)
+          kill $AG || true
+          sleep 0.2
+          test -s agent.log || (echo "Agent log empty"; exit 1)
+
+      - name: Upload agent log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xrce-agent-smoke
+          path: agent.log
+          if-no-files-found: warn
 
   microros-zephyr-nrf52840-build-z4_0:
     runs-on: ubuntu-22.04
