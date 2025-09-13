@@ -493,40 +493,56 @@ jobs:
             build/zephyr/artifacts_meta.json
 
   renode-nrf52-load-smoke:
+    needs: [zephyr-build-nrf52-base-app]
     runs-on: ubuntu-22.04
     defaults:
       run:
         shell: bash
     steps:
       - uses: actions/checkout@v4
-
-      # 若你前一個 job 已編 ELF，可直接重用；否則這裡保險再建一次
-      - name: Ensure ELF exists (rebuild if missing)
+  
+      # 先嘗試拿上個 job 上傳的產物，避免重建
+      - name: Download baseline ELF artifact (if available)
+        uses: actions/download-artifact@v4
+        with:
+          name: nrf52-base-elf
+          path: build
+          # 不要因為沒有產物而失敗——我們會 fallback 重建
+          merge-multiple: false
+  
+      # 若沒有拿到產物，再安裝 Zephyr/SDK + 重建
+      - name: Setup Zephyr (SDK + west workspace) for fallback build
+        if: ${{ !hashFiles('build/zephyr/zephyr.elf') }}
+        uses: zephyrproject-rtos/action-zephyr-setup@v1
+        with:
+          app-path: app
+          toolchains: arm-zephyr-eabi
+          sdk-version: 0.16.3
+  
+      - name: Fallback build (only if ELF missing)
+        if: ${{ !hashFiles('build/zephyr/zephyr.elf') }}
         run: |
           set -euo pipefail
-          if [ ! -f build/zephyr/zephyr.elf ]; then
-            west update
-            west build firmware/nrf52_base_app -b nrf52840dk/nrf52840 --pristine always
-          fi
+          west update
+          west build firmware/nrf52_base_app -b nrf52840dk/nrf52840 --pristine always
           file build/zephyr/zephyr.elf
-
+  
       - name: Install Renode (Ubuntu 22.04)
         run: |
           set -euo pipefail
           sudo apt-get update
-          # 多數 runner 已有可用封包；若沒有，這一步會報錯，我們再改走你現有的安裝法
           sudo apt-get install -y --no-install-recommends renode
-
+  
       - name: Install RobotFramework (for simple orchestration)
         run: |
           python3 -m pip install --user --no-cache-dir robotframework
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
+  
       - name: Run Renode smoke
         run: |
           set -euo pipefail
           robot -L TRACE -d artifacts/renode_smoke tests/nrf52_load.robot
-
+  
       - name: Upload Renode smoke artifacts
         if: always()
         uses: actions/upload-artifact@v4
