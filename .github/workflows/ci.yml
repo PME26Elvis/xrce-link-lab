@@ -743,7 +743,7 @@ microros-zephyr-nrf52840-build-z4_0:
             ${RUNNER_TEMP}/z4_ws/build/build.log
             ${RUNNER_TEMP}/z4_ws/boards_52840.txt
 
-  microros-zephyr-stm32l475-build:
+microros-zephyr-stm32l475-build:
     runs-on: ubuntu-22.04
     defaults:
       run:
