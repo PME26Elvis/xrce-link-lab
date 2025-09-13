@@ -13,8 +13,8 @@ ${AGENT_LOG}      agent_e2e.log
 Renode + XRCE Agent (serial PTY) E2E smoke
     [Documentation]    在同一支測試中啟動 Renode（建立 UART PTY）與 XRCE Agent(serial)，確認雙方皆能啟動，並收集日誌。
     File Should Exist        ${ELF}
-    ${cmd}=    Set Variable  sed "s|@{ELF_PATH}|${ELF}|g" ${RESC} > ${RESC_TMP}
-    Run Process             bash  -lc  ${cmd}    shell=True
+    ${cmd}=    Set Variable    sed "s|__ELF_PATH__|${ELF}|g" ${RESC} > ${RESC_TMP}
+    Run Process    bash    -lc    ${cmd}    shell=True
     File Should Exist        ${RESC_TMP}
 
     # 1) 啟 Renode，讓它載入 ELF 並建立 PTY；讓它跑一下再退出
