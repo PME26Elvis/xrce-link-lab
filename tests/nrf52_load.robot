@@ -12,7 +12,7 @@ ${RENODE_LOG}     renode_run.log
 Renode loads nRF52840 ELF and runs shortly
     [Documentation]    確認 Renode 能載入 nRF52840 ELF 並執行 1 秒（不接 Agent）
     File Should Exist        ${ELF}
-    ${cmd}=    Set Variable  sed "s|__ELF_PATH__|${ELF}|g" ${RESC} > ${RESC_TMP}
+    ${cmd}=    Set Variable    sed "s|__ELF_PATH__|${ELF}|g" ${RESC} > ${RESC_TMP}
     Run Process             bash  -lc  ${cmd}    shell=True
     File Should Exist        ${RESC_TMP}
 
