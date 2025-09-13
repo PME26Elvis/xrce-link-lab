@@ -616,6 +616,51 @@ jobs:
           name: xrce-agent-smoke
           path: agent.log
           if-no-files-found: warn
+          
+  renode-agent-serial-e2e-smoke:
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      # 若前一個 job 已建過 ELF，這裡會直接重用；否則保險再建一次
+      - name: Ensure ELF exists (rebuild if missing)
+        run: |
+          set -euo pipefail
+          if [ ! -f build/zephyr/zephyr.elf ]; then
+            west update
+            west build firmware/nrf52_base_app -b nrf52840dk/nrf52840 --pristine always
+          fi
+          file build/zephyr/zephyr.elf
+
+      - name: Install Renode + XRCE Agent + Robot deps
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends renode git cmake build-essential libasio-dev libtinyxml2-dev socat
+          git clone --depth 1 https://github.com/eProsima/Micro-XRCE-DDS-Agent.git
+          cd Micro-XRCE-DDS-Agent && mkdir build && cd build
+          cmake .. && make -j"$(nproc)" && sudo make install && sudo ldconfig
+          python3 -m pip install --user --no-cache-dir robotframework
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Run unified Renode+Agent serial smoke
+        run: |
+          set -euo pipefail
+          robot -L TRACE -d artifacts/renode_agent_serial tests/renode_xrce_serial_e2e.robot
+
+      - name: Upload E2E artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: renode-agent-serial-e2e
+          path: |
+            artifacts/renode_agent_serial/**
+            renode_e2e.log
+            agent_e2e.log
+          if-no-files-found: warn
 
   microros-zephyr-nrf52840-build-z4_0:
     runs-on: ubuntu-22.04
