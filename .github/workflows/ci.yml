@@ -641,24 +641,45 @@ jobs:
           fi
           file build/zephyr/zephyr.elf
   
-      # ⬇️ 用 portable 版安裝 Renode（不依賴 apt 套件庫）
       - name: Install Renode (portable) + deps
         run: |
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends curl jq ca-certificates mono-complete tar
+  
           RENODE_DIR="${RUNNER_TEMP}/renode"
           mkdir -p "$RENODE_DIR"
-          # 抓最新版 linux-portable tarball 下載網址
+  
+          # 取最新 release 的 linux-portable tarball
           URL="$(curl -s https://api.github.com/repos/renode/renode/releases/latest \
             | jq -r '.assets[] | select(.name|test("linux-portable.*\\.tar\\.gz$")) | .browser_download_url' | head -n1)"
           echo "Downloading: $URL"
           curl -L "$URL" -o "${RENODE_DIR}/renode.tar.gz"
+  
+          # 解壓
           tar -xzf "${RENODE_DIR}/renode.tar.gz" -C "$RENODE_DIR"
-          chmod +x "${RENODE_DIR}/renode"
-          echo "${RENODE_DIR}" >> "$GITHUB_PATH"
-          # 確認可執行
-          renode --version || true
+  
+          # 動態尋找 renode 可執行檔（不同版本目錄結構不一樣）
+          RENODE_BIN="$(find "$RENODE_DIR" -type f -name renode -perm -u+x | head -n1 || true)"
+          if [ -z "$RENODE_BIN" ]; then
+            # 有些包 renode 腳本沒有 +x，或名稱帶副檔名；都處理一下
+            RENODE_BIN="$(find "$RENODE_DIR" -type f -name 'renode' -o -name 'renode.sh' | head -n1 || true)"
+          fi
+          if [ -z "$RENODE_BIN" ]; then
+            echo "::error::Cannot locate renode executable after extracting portable package."
+            echo "Extracted files:"
+            find "$RENODE_DIR" -maxdepth 2 -type f | sed -n '1,50p'
+            exit 1
+          fi
+          chmod +x "$RENODE_BIN"
+          echo "Found renode at: $RENODE_BIN"
+  
+          # 加到 PATH
+          echo "$(dirname "$RENODE_BIN")" >> "$GITHUB_PATH"
+  
+          # 簡單確認
+          "$(dirname "$RENODE_BIN")/renode" --version || true
+
   
       - name: Install XRCE Agent + Robot deps
         run: |
