@@ -1,26 +1,20 @@
 using sysbus
 
 mach create "nrf52-ci"
-# 官方內建 nRF52 平台
 machine LoadPlatformDescription @platforms/cpus/nrf52.repl
 
-# 由 CI 或步驟替換的路徑；請用 sed 注入絕對路徑
-sysbus LoadELF @{ELF_PATH}
+# 由 Robot/CI 以 sed 注入絕對路徑
+sysbus LoadELF @__ELF_PATH__
 
-# 建一個 PTY 終端讓 UART 出口可被外部程式打開（先不在此測）
 emulation CreateUartPtyTerminal "pty0"
 connector Connect sysbus.uart0 pty0
 
-# 讓 CPU 真正跑起來一小段時間
 start
 emulation RunFor "1.0"
 pause
 
-# 打印出這次建立的 PTY 路徑，方便 Robot / 後續串 Agent
-# （Renode 會在 monitor 輸出這行，Robot 以此抓取）
-# 注意：這裡使用屬性 Path 需要新版本 Renode；若舊版不支援，仍不影響本 smoke 測試
 try {
-    log "UART PTY: " + pty0 Path
+    log "UART PTY created."
 } catch {
     log "UART PTY created."
 }
