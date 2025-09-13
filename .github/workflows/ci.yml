@@ -451,19 +451,47 @@ jobs:
           file build/zephyr/zephyr.elf || true
           file build/zephyr/zephyr.hex || true
 
+      - name: Sign and hash artifacts (nRF52840)
+        run: |
+          set -euo pipefail
+          # 1) 生成 .hex（若已生，這步會覆蓋）
+          west sign -d build --no-hex --bin --tool imgtool || true
+          # 2) 指紋與版本資訊
+          python3 - << 'PY'
+          import hashlib, pathlib, json, subprocess, os
+          root = pathlib.Path("build/zephyr")
+          artifacts = {}
+          for p in ["zephyr.elf", "zephyr.hex", ".config", "zephyr.dts"]:
+              fp = root / p
+              if fp.exists():
+                  data = fp.read_bytes()
+                  artifacts[p] = {
+                      "size": len(data),
+                      "sha256": hashlib.sha256(data).hexdigest(),
+                  }
+          # Zephyr/SDK 版本
+          def cmd(x): return subprocess.check_output(x, shell=True, text=True).strip()
+          meta = {
+            "zephyr_describe": cmd("git -C zephyr describe --tags --always || true") if pathlib.Path("zephyr").exists() else "",
+            "west_version": cmd("west --version || true"),
+          }
+          print(json.dumps({"artifacts":artifacts, "meta":meta}, indent=2))
+          pathlib.Path("build/zephyr/artifacts_meta.json").write_text(json.dumps({"artifacts":artifacts, "meta":meta}, indent=2))
+          PY
 
-
-
-      - name: Upload baseline ELF
+      - name: Upload full build evidence (nRF52840)
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: nrf52-base-elf
+          name: nrf52-base-evidence
           if-no-files-found: warn
           path: |
-            build/zephyr/zephyr.*
+            build/zephyr/zephyr.elf
+            build/zephyr/zephyr.hex
             build/zephyr/.config
             build/zephyr/zephyr.dts
+            build/zephyr/artifacts_meta.json
+
 
   microros-zephyr-nrf52840-build-z4_0:
     runs-on: ubuntu-22.04
