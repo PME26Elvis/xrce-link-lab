@@ -541,11 +541,22 @@ jobs:
           ls -lah artifacts/nrf52
           test -f artifacts/nrf52/zephyr.elf
 
-      - name: Install Renode & RobotFramework
+      - name: Install Renode (portable) & RobotFramework
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends renode
+          sudo apt-get install -y --no-install-recommends wget xz-utils tar
+          # 下載並解壓 portable 版到暫存資料夾
+          mkdir -p "$RUNNER_TEMP/renode"
+          cd "$RUNNER_TEMP"
+          wget -q https://builds.renode.io/renode-latest.linux-portable.tar.gz
+          tar -xf renode-latest.linux-portable.tar.gz -C "$RUNNER_TEMP/renode" --strip-components=1
+          # 將 renode 加入 PATH，之後可直接呼叫 `renode`
+          echo "$RUNNER_TEMP/renode" >> "$GITHUB_PATH"
+          # 檢查版本
+          "$RUNNER_TEMP/renode/renode" --version || true
+
+          # RobotFramework 供測試編排使用
           python3 -m pip install --user --no-cache-dir robotframework
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
