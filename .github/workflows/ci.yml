@@ -625,7 +625,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
   
-      # ✅ 確保有 west / Zephyr SDK
       - name: Setup Zephyr (SDK + west)
         uses: zephyrproject-rtos/action-zephyr-setup@v1
         with:
@@ -633,7 +632,6 @@ jobs:
           toolchains: arm-zephyr-eabi
           sdk-version: 0.16.3
   
-      # 若前面已有 build 的 artifact，也可改成 download；這裡保守：不存在就重建
       - name: Ensure ELF exists (rebuild if missing)
         run: |
           set -euo pipefail
@@ -643,11 +641,30 @@ jobs:
           fi
           file build/zephyr/zephyr.elf
   
-      - name: Install Renode + XRCE Agent + Robot deps
+      # ⬇️ 用 portable 版安裝 Renode（不依賴 apt 套件庫）
+      - name: Install Renode (portable) + deps
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends renode git cmake build-essential libasio-dev libtinyxml2-dev socat
+          sudo apt-get install -y --no-install-recommends curl jq ca-certificates mono-complete tar
+          RENODE_DIR="${RUNNER_TEMP}/renode"
+          mkdir -p "$RENODE_DIR"
+          # 抓最新版 linux-portable tarball 下載網址
+          URL="$(curl -s https://api.github.com/repos/renode/renode/releases/latest \
+            | jq -r '.assets[] | select(.name|test("linux-portable.*\\.tar\\.gz$")) | .browser_download_url' | head -n1)"
+          echo "Downloading: $URL"
+          curl -L "$URL" -o "${RENODE_DIR}/renode.tar.gz"
+          tar -xzf "${RENODE_DIR}/renode.tar.gz" -C "$RENODE_DIR"
+          chmod +x "${RENODE_DIR}/renode"
+          echo "${RENODE_DIR}" >> "$GITHUB_PATH"
+          # 確認可執行
+          renode --version || true
+  
+      - name: Install XRCE Agent + Robot deps
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends git cmake build-essential libasio-dev libtinyxml2-dev socat
           git clone --depth 1 https://github.com/eProsima/Micro-XRCE-DDS-Agent.git
           cd Micro-XRCE-DDS-Agent && mkdir build && cd build
           cmake .. && make -j"$(nproc)" && sudo make install && sudo ldconfig
@@ -669,6 +686,7 @@ jobs:
             renode_e2e.log
             agent_e2e.log
           if-no-files-found: warn
+
 
 #   microros-zephyr-nrf52840-build-z4_0:
 #     runs-on: ubuntu-22.04
