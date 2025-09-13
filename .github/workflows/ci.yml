@@ -569,7 +569,10 @@ jobs:
       - name: Run Renode load smoke
         run: |
           set -euo pipefail
-          robot -L TRACE -d artifacts/renode_smoke tests/nrf52_load.robot
+          robot -L TRACE \
+            -d artifacts/renode_smoke \
+            -v ELF:${GITHUB_WORKSPACE}/artifacts/nrf52/zephyr.elf \
+            tests/nrf52_load.robot
 
       - name: Upload Renode smoke artifacts
         if: always()
