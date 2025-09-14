@@ -3,10 +3,18 @@ using sysbus
 mach create "nrf52-ci"
 machine LoadPlatformDescription @platforms/cpus/nrf52.repl
 
-# 由測試檔注入實際路徑
-sysbus LoadELF __ELF_PATH__
+# 由 Robot/CI 以 sed 注入絕對路徑
+sysbus LoadELF @__ELF_PATH__
 
-# 建立 PTY 並印到 log，讓測試擷取
 emulation CreateUartPtyTerminal "pty0"
 connector Connect sysbus.uart0 pty0
-try { log "UART PTY: " + pty0 Path } catch { log "UART PTY created." }
+
+start
+emulation RunFor "1.0"
+pause
+
+try {
+    log "UART PTY created."
+} catch {
+    log "UART PTY created."
+}
