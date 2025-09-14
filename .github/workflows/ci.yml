@@ -789,11 +789,17 @@ jobs:
           fi
           file build/zephyr/zephyr.elf
   
-      - name: Install Renode + Robot
+      - name: Install Renode (release .deb) + Robot
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends renode
+          # 抓最新版的 Renode release .deb
+          RENODE_DEB=$(mktemp /tmp/renode_XXXX.deb)
+          curl -L https://builds.renode.io/renode-latest.linux-portable.tar.gz -o renode-portable.tar.gz
+          mkdir renode-portable && tar -xzf renode-portable.tar.gz -C renode-portable --strip-components=1
+          sudo mv renode-portable /opt/renode
+          sudo ln -s /opt/renode/renode /usr/local/bin/renode
+          renode --version
           python3 -m pip install --user --no-cache-dir robotframework
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
   
