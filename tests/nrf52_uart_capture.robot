@@ -18,7 +18,7 @@ Start Renode And Get PTY
     ${p}=    Start Process    bash  -lc    "renode -e 's @${RESC_TMP}; start; sleep 3; q' > ${RENODE_LOG} 2>&1"    shell=True
     Wait For Process    ${p}    timeout=40s
     # 從 log 取出 /dev/pts/N
-    ${pty_out}=    Run Process    bash  -lc    "grep -Eo '/dev/pts/[0-9]+' ${RENODE_LOG} | tail -n1"    shell=True    stdout_path=${CURDIR}/pty.txt
+    Run Process    bash  -lc    "grep -Eo '/dev/pts/[0-9]+' ${RENODE_LOG} | tail -n1 > ${CURDIR}/pty.txt"    shell=True
     ${pty}=    Get File    ${CURDIR}/pty.txt
     RETURN    ${pty}
 
