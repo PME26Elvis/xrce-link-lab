@@ -1,10 +1,336 @@
-name: CI
+name: CI v2 (with Caching)
 
 on:
   push:
+    branches: [ "main" ] # 僅在 main 分支 push 時觸發，避免與 ci.yml 衝突
   pull_request:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  # ====================================================================
+  #  Build & Test Jobs (with caching)
+  # ====================================================================
+
+  agent-build:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache apt packages
+        uses: actions/cache@v4
+        with:
+          path: /var/cache/apt/archives
+          key: ${{ runner.os }}-apt-${{ hashFiles('**/ci_2.yml') }} # 當此檔變更時，快取失效
+          restore-keys: |
+            ${{ runner.os }}-apt-
+
+      - name: Install deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            git cmake build-essential libasio-dev libtinyxml2-dev
+
+      - name: Build Micro XRCE-DDS Agent
+        run: |
+          git clone --depth 1 https://github.com/eProsima/Micro-XRCE-DDS-Agent.git
+          cd Micro-XRCE-DDS-Agent && mkdir build && cd build
+          cmake ..
+          make -j"$(nproc)"
+          sudo make install
+          sudo ldconfig
+
+      - name: Sanity check Agent CLI
+        run: MicroXRCEAgent --help | head -n 30
+
+  zephyr-build-nrf52-base-app:
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache Zephyr SDK
+        id: cache-zephyr-sdk
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/zephyr-sdk-0.16.3
+          key: zephyr-sdk-0.16.3-${{ runner.os }}
+
+      - name: Setup Zephyr (SDK + west workspace)
+        uses: zephyrproject-rtos/action-zephyr-setup@v1
+        with:
+          app-path: app
+          toolchains: arm-zephyr-eabi
+          sdk-version: 0.16.3
+          # 如果快取命中，從快取路徑安裝 SDK
+          sdk-install-path: ${{ steps.cache-zephyr-sdk.outputs.cache-hit == 'true' && format('{0}/zephyr-sdk-0.16.3', runner.temp) || '' }}
+
+      - name: Cache west modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            bootloader
+            modules
+            tools
+            zephyr
+          key: ${{ runner.os }}-west-${{ hashFiles('app/west.yml') }}
+
+      - name: Build nRF52 baseline app
+        run: |
+          set -euo pipefail
+          west update
+          rm -rf build
+          west build firmware/nrf52_base_app -b nrf52840dk/nrf52840 --pristine always \
+            -- -DCONF_FILE="${GITHUB_WORKSPACE}/firmware/nrf52_base_app/prj.conf"
+
+      - name: Upload nRF52 base app ELF/HEX (canonical artifact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: nrf52-base-elf-v2
+          if-no-files-found: error
+          path: |
+            build/zephyr/zephyr.elf
+            build/zephyr/zephyr.hex
+            build/zephyr/.config
+            build/zephyr/zephyr.dts
+
+  zephyr-build-and-run-xrce-stub:
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache Zephyr SDK
+        id: cache-zephyr-sdk
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/zephyr-sdk-0.16.3
+          key: zephyr-sdk-0.16.3-${{ runner.os }}
+
+      - name: Setup Zephyr (SDK + west)
+        uses: zephyrproject-rtos/action-zephyr-setup@v1
+        with:
+          app-path: app
+          toolchains: arm-zephyr-eabi
+          sdk-version: 0.16.3
+          sdk-install-path: ${{ steps.cache-zephyr-sdk.outputs.cache-hit == 'true' && format('{0}/zephyr-sdk-0.16.3', runner.temp) || '' }}
+
+      - name: Cache west modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            bootloader
+            modules
+            tools
+            zephyr
+          key: ${{ runner.os }}-west-${{ hashFiles('app/west.yml') }}
+
+      - name: Build XRCE stub app (nRF52840)
+        run: |
+          set -euo pipefail
+          west update
+          west build firmware/xrce_nrf52_client -b nrf52840dk/nrf52840 --pristine always
+
+      - name: Upload artifacts (ELF/HEX/.config/DTS)
+        uses: actions/upload-artifact@v4
+        with:
+          name: xrce-stub-elf-v2
+          path: |
+            build/zephyr/zephyr.elf
+            build/zephyr/zephyr.hex
+            build/zephyr/.config
+            build/zephyr/zephyr.dts
+          if-no-files-found: warn
+
+  renode-uart-heartbeat-capture:
+    needs: [zephyr-build-and-run-xrce-stub] # 依賴正確的韌體建置 job
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download XRCE stub app ELF
+        uses: actions/download-artifact@v4
+        with:
+          name: xrce-stub-elf-v2 # 使用 v2 artifact
+          path: build/zephyr
+
+      - name: Verify downloaded ELF
+        run: |
+          set -euo pipefail
+          ls -l build/zephyr
+          test -f build/zephyr/zephyr.elf
+
+      - name: Cache Renode portable
+        id: cache-renode
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/renode-portable
+          key: renode-portable-v1-${{ runner.os }}
+
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }} # 可建立一個 requirements.txt
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install deps, setup PATH, and run test in one step
+        run: |
+          set -euo pipefail
+          # --- 1. Install Dependencies ---
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends wget xz-utils tar
+          python3 -m pip install --user --no-cache-dir robotframework robotframework-sshlibrary
+
+          # --- 2. Setup PATH for this step ---
+          RENODE_DIR="$RUNNER_TEMP/renode-portable"
+          mkdir -p "$RENODE_DIR"
+          
+          # 如果快取沒有命中，才下載 Renode
+          if [ "${{ steps.cache-renode.outputs.cache-hit }}" != 'true' ]; then
+            echo "Renode cache miss. Downloading..."
+            wget -q https://builds.renode.io/renode-latest.linux-portable.tar.gz -O "$RENODE_DIR/renode.tar.gz"
+            tar -xf "$RENODE_DIR/renode.tar.gz" -C "$RENODE_DIR" --strip-components=1
+          else
+            echo "Renode cache hit."
+          fi
+          
+          # Add Renode and pip user bin to PATH for the rest of this script
+          export PATH="$RENODE_DIR:$HOME/.local/bin:$PATH"
+          renode --version
+
+          # --- 3. Run the test ---
+          robot -d artifacts/uart_capture tests/nrf52_uart_capture.robot
+
+      - name: Upload UART capture artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: renode-uart-capture-logs-v2
+          path: |
+            artifacts/uart_capture/**
+            uart_capture.renode.log
+            uart_capture.device.log
+          if-no-files-found: warn
+
+  # --- 其他 smoke tests (此處省略，但可以比照上面的模式加入快取) ---
+  # ... renode-smoke, agent-udp-smoke, etc. ...
+
+  # 保持一個 E2E smoke test 作為範例
+  renode-agent-serial-e2e-smoke:
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache Zephyr SDK
+        id: cache-zephyr-sdk
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/zephyr-sdk-0.16.3
+          key: zephyr-sdk-0.16.3-${{ runner.os }}
+
+      - name: Setup Zephyr (SDK + west)
+        uses: zephyrproject-rtos/action-zephyr-setup@v1
+        with:
+          app-path: app
+          toolchains: arm-zephyr-eabi
+          sdk-version: 0.16.3
+          sdk-install-path: ${{ steps.cache-zephyr-sdk.outputs.cache-hit == 'true' && format('{0}/zephyr-sdk-0.16.3', runner.temp) || '' }}
+
+      - name: Cache west modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            bootloader
+            modules
+            tools
+            zephyr
+          key: ${{ runner.os }}-west-${{ hashFiles('app/west.yml') }}
+
+      - name: Ensure ELF exists (rebuild if missing)
+        run: |
+          set -euo pipefail
+          if [ ! -f build/zephyr/zephyr.elf ]; then
+            west update
+            west build firmware/nrf52_base_app -b nrf52840dk/nrf52840 --pristine always
+          fi
+          file build/zephyr/zephyr.elf
+
+      - name: Cache Renode portable
+        id: cache-renode
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/renode-portable
+          key: renode-portable-v1-${{ runner.os }}
+
+      - name: Install Renode (from cache or download)
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends curl jq ca-certificates mono-complete tar
+          RENODE_DIR="${RUNNER_TEMP}/renode-portable"
+          mkdir -p "$RENODE_DIR"
+          if [ "${{ steps.cache-renode.outputs.cache-hit }}" != 'true' ]; then
+            echo "Renode cache miss. Downloading..."
+            URL="$(curl -s https://api.github.com/repos/renode/renode/releases/latest | jq -r '.assets[] | select(.name|test("linux-portable.*\\.tar\\.gz$")) | .browser_download_url' | head -n1)"
+            curl -L "$URL" -o "${RENODE_DIR}/renode.tar.gz"
+            tar -xzf "${RENODE_DIR}/renode.tar.gz" -C "$RENODE_DIR" --strip-components=1
+          else
+            echo "Renode cache hit."
+          fi
+          RENODE_BIN="$(find "$RENODE_DIR" -type f -name renode -perm -u+x | head -n1 || true)"
+          if [ -z "$RENODE_BIN" ]; then RENODE_BIN="$(find "$RENODE_DIR" -type f -name 'renode' -o -name 'renode.sh' | head -n1 || true)"; fi
+          if [ -z "$RENODE_BIN" ]; then echo "::error::Cannot locate renode executable"; exit 1; fi
+          chmod +x "$RENODE_BIN"
+          echo "$(dirname "$RENODE_BIN")" >> "$GITHUB_PATH"
+          "$(dirname "$RENODE_BIN")/renode" --version || true
+
+      - name: Install XRCE Agent + Robot deps
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends git cmake build-essential libasio-dev libtinyxml2-dev socat
+          git clone --depth 1 https://github.com/eProsima/Micro-XRCE-DDS-Agent.git
+          cd Micro-XRCE-DDS-Agent && mkdir build && cd build
+          cmake .. && make -j"$(nproc)" && sudo make install && sudo ldconfig
+          python3 -m pip install --user --no-cache-dir robotframework
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Run unified Renode+Agent serial smoke
+        run: |
+          set -euo pipefail
+          robot -L TRACE -d artifacts/renode_agent_serial tests/renode_xrce_serial_e2e.robot
+
+      - name: Upload E2E artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: renode-agent-serial-e2e-v2
+          path: |
+            artifacts/renode_agent_serial/**
+            renode_e2e.log
+            agent_e2e.log
+          if-no-files-found: warn
+
+
+################################################################################
+#  The following jobs are copied from ci.yml for completeness.
+#  You can apply caching strategies to them as well.
+################################################################################
+
   renode-smoke:
     runs-on: ubuntu-22.04
     steps:
@@ -14,26 +340,6 @@ jobs:
         with:
           renode-revision: master
           tests-to-run: tests/smoke.robot
-
-  agent-build:
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            git cmake build-essential libasio-dev libtinyxml2-dev
-      - name: Build Micro XRCE-DDS Agent
-        run: |
-          git clone --depth 1 https://github.com/eProsima/Micro-XRCE-DDS-Agent.git
-          cd Micro-XRCE-DDS-Agent && mkdir build && cd build
-          cmake ..
-          make -j"$(nproc)"
-          sudo make install
-          sudo ldconfig
-      - name: Sanity check Agent CLI
-        run: MicroXRCEAgent --help | head -n 30
 
   renode-multinode:
     runs-on: ubuntu-22.04
@@ -416,93 +722,6 @@ jobs:
             build/zephyr/zephyr.*
             build/zephyr/.config
             build/zephyr/zephyr.dts
-            
-  zephyr-build-nrf52-base-app:
-    runs-on: ubuntu-22.04
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Zephyr (SDK + west workspace)
-        uses: zephyrproject-rtos/action-zephyr-setup@v1
-        with:
-          app-path: app
-          toolchains: arm-zephyr-eabi
-          sdk-version: 0.16.3
-
-      - name: Build nRF52 baseline app
-        run: |
-          set -euo pipefail
-          west update
-          
-          rm -rf build
-          west build firmware/nrf52_base_app -b nrf52840dk/nrf52840 --pristine always \
-            -- -DCONF_FILE="${GITHUB_WORKSPACE}/firmware/nrf52_base_app/prj.conf"
-          
-          # 若 .config 生成，簡單檢查幾個關鍵位
-          if [ -f build/zephyr/.config ]; then
-            echo "===== sanity: merged .config keys ====="
-            grep -E "CONFIG_(SERIAL|UART_CONSOLE|CONSOLE|PRINTK|LOG)=" build/zephyr/.config || true
-          fi
-          
-          # 存證
-          file build/zephyr/zephyr.elf || true
-          file build/zephyr/zephyr.hex || true
-
-      - name: Sign and hash artifacts (nRF52840)
-        run: |
-          set -euo pipefail
-          # 1) 生成 .hex（若已生，這步會覆蓋）
-          west sign -d build --no-hex --bin --tool imgtool || true
-          # 2) 指紋與版本資訊
-          python3 - << 'PY'
-          import hashlib, pathlib, json, subprocess, os
-          root = pathlib.Path("build/zephyr")
-          artifacts = {}
-          for p in ["zephyr.elf", "zephyr.hex", ".config", "zephyr.dts"]:
-              fp = root / p
-              if fp.exists():
-                  data = fp.read_bytes()
-                  artifacts[p] = {
-                      "size": len(data),
-                      "sha256": hashlib.sha256(data).hexdigest(),
-                  }
-          # Zephyr/SDK 版本
-          def cmd(x): return subprocess.check_output(x, shell=True, text=True).strip()
-          meta = {
-            "zephyr_describe": cmd("git -C zephyr describe --tags --always || true") if pathlib.Path("zephyr").exists() else "",
-            "west_version": cmd("west --version || true"),
-          }
-          print(json.dumps({"artifacts":artifacts, "meta":meta}, indent=2))
-          pathlib.Path("build/zephyr/artifacts_meta.json").write_text(json.dumps({"artifacts":artifacts, "meta":meta}, indent=2))
-          PY
-
-      - name: Upload full build evidence (nRF52840)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: nrf52-base-evidence
-          if-no-files-found: warn
-          path: |
-            build/zephyr/zephyr.elf
-            build/zephyr/zephyr.hex
-            build/zephyr/.config
-            build/zephyr/zephyr.dts
-            build/zephyr/artifacts_meta.json
-
-      - name: Upload nRF52 base app ELF/HEX (canonical artifact)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: nrf52-base-elf
-          if-no-files-found: error
-          path: |
-            build/zephyr/zephyr.elf
-            build/zephyr/zephyr.hex
-            build/zephyr/.config
-            build/zephyr/zephyr.dts
 
   renode-nrf52-load-smoke:
     needs: [zephyr-build-nrf52-base-app]
@@ -615,211 +834,4 @@ jobs:
         with:
           name: xrce-agent-smoke
           path: agent.log
-          if-no-files-found: warn
-
-  renode-agent-serial-e2e-smoke:
-    runs-on: ubuntu-22.04
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@v4
-  
-      - name: Setup Zephyr (SDK + west)
-        uses: zephyrproject-rtos/action-zephyr-setup@v1
-        with:
-          app-path: app
-          toolchains: arm-zephyr-eabi
-          sdk-version: 0.16.3
-  
-      - name: Ensure ELF exists (rebuild if missing)
-        run: |
-          set -euo pipefail
-          if [ ! -f build/zephyr/zephyr.elf ]; then
-            west update
-            west build firmware/nrf52_base_app -b nrf52840dk/nrf52840 --pristine always
-          fi
-          file build/zephyr/zephyr.elf
-  
-      - name: Install Renode (portable) + deps
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends curl jq ca-certificates mono-complete tar
-  
-          RENODE_DIR="${RUNNER_TEMP}/renode"
-          mkdir -p "$RENODE_DIR"
-  
-          # 取最新 release 的 linux-portable tarball
-          URL="$(curl -s https://api.github.com/repos/renode/renode/releases/latest \
-            | jq -r '.assets[] | select(.name|test("linux-portable.*\\.tar\\.gz$")) | .browser_download_url' | head -n1)"
-          echo "Downloading: $URL"
-          curl -L "$URL" -o "${RENODE_DIR}/renode.tar.gz"
-  
-          # 解壓
-          tar -xzf "${RENODE_DIR}/renode.tar.gz" -C "$RENODE_DIR"
-  
-          # 動態尋找 renode 可執行檔（不同版本目錄結構不一樣）
-          RENODE_BIN="$(find "$RENODE_DIR" -type f -name renode -perm -u+x | head -n1 || true)"
-          if [ -z "$RENODE_BIN" ]; then
-            # 有些包 renode 腳本沒有 +x，或名稱帶副檔名；都處理一下
-            RENODE_BIN="$(find "$RENODE_DIR" -type f -name 'renode' -o -name 'renode.sh' | head -n1 || true)"
-          fi
-          if [ -z "$RENODE_BIN" ]; then
-            echo "::error::Cannot locate renode executable after extracting portable package."
-            echo "Extracted files:"
-            find "$RENODE_DIR" -maxdepth 2 -type f | sed -n '1,50p'
-            exit 1
-          fi
-          chmod +x "$RENODE_BIN"
-          echo "Found renode at: $RENODE_BIN"
-  
-          # 加到 PATH
-          echo "$(dirname "$RENODE_BIN")" >> "$GITHUB_PATH"
-  
-          # 簡單確認
-          "$(dirname "$RENODE_BIN")/renode" --version || true
-
-  
-      - name: Install XRCE Agent + Robot deps
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends git cmake build-essential libasio-dev libtinyxml2-dev socat
-          git clone --depth 1 https://github.com/eProsima/Micro-XRCE-DDS-Agent.git
-          cd Micro-XRCE-DDS-Agent && mkdir build && cd build
-          cmake .. && make -j"$(nproc)" && sudo make install && sudo ldconfig
-          python3 -m pip install --user --no-cache-dir robotframework
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-  
-      - name: Run unified Renode+Agent serial smoke
-        run: |
-          set -euo pipefail
-          robot -L TRACE -d artifacts/renode_agent_serial tests/renode_xrce_serial_e2e.robot
-  
-      - name: Upload E2E artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: renode-agent-serial-e2e
-          path: |
-            artifacts/renode_agent_serial/**
-            renode_e2e.log
-            agent_e2e.log
-          if-no-files-found: warn
-
-  zephyr-build-and-run-xrce-stub:
-    runs-on: ubuntu-22.04
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@v4
-  
-      - name: Setup Zephyr (SDK + west)
-        uses: zephyrproject-rtos/action-zephyr-setup@v1
-        with:
-          app-path: app
-          toolchains: arm-zephyr-eabi
-          sdk-version: 0.16.3
-  
-      - name: Build XRCE stub app (nRF52840)
-        run: |
-          set -euo pipefail
-          west update
-          west build firmware/xrce_nrf52_client -b nrf52840dk/nrf52840 --pristine always
-          file build/zephyr/zephyr.elf
-          file build/zephyr/zephyr.hex
-  
-      - name: Install Renode (portable) + Robot
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          # Renode 需要 mono runtime；用系統套件即可
-          sudo apt-get install -y --no-install-recommends mono-complete ca-certificates curl xz-utils
-          # 下載可攜版 Renode 並加入 PATH
-          mkdir -p $HOME/tools/renode
-          curl -L https://builds.renode.io/renode-latest.linux-portable.tar.gz \
-            | tar xz --strip-components=1 -C $HOME/tools/renode
-          echo "$HOME/tools/renode" >> "$GITHUB_PATH"
-          # RobotFramework
-          python3 -m pip install --user --no-cache-dir robotframework
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
-  
-      - name: Run Renode smoke (XRCE stub)
-        run: |
-          set -euo pipefail
-          # 復用你已存在的 tests/renode_nrf52_load.robot 風格；若名稱不同，用你現在綠燈那支
-          robot -L TRACE -d artifacts/xrce_stub_run tests/nrf52_load.robot
-  
-      - name: Upload artifacts (ELF/HEX/.config/DTS + logs)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: xrce-stub-elf-and-run
-          path: |
-            build/zephyr/zephyr.*
-            build/zephyr/.config
-            build/zephyr/zephyr.dts
-            artifacts/xrce_stub_run/**
-          if-no-files-found: warn
-          
-  renode-uart-heartbeat-capture:
-    # 這個測試需要 xrce_nrf52_client 韌體，因为它會印出 "XRCE-STUB heartbeat"
-    # 我們讓它依賴 zephyr-build-and-run-xrce-stub job
-    needs: [zephyr-build-and-run-xrce-stub]
-    runs-on: ubuntu-22.04
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@v4
-      
-      # 為了讓此 job 能獨立測試，我們也加入 west setup
-      - name: Setup Zephyr (SDK + west)
-        uses: zephyrproject-rtos/action-zephyr-setup@v1
-        with:
-          app-path: app
-          toolchains: arm-zephyr-eabi
-          sdk-version: 0.16.3
-
-      - name: Download XRCE stub app ELF
-        uses: actions/download-artifact@v4
-        with:
-          # 從 xrce-stub-elf-and-run job 下載產物
-          name: xrce-stub-elf-and-run
-          path: artifacts/downloaded-stub
-          
-      - name: Install deps, setup PATH, and run test in one step
-        run: |
-          set -euo pipefail
-          # --- 1. Install Dependencies ---
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends wget xz-utils tar
-          python3 -m pip install --user --no-cache-dir robotframework robotframework-sshlibrary
-          # --- 2. Setup PATH for this step ---
-
-          # Install Renode portable
-          RENODE_DIR="$RUNNER_TEMP/renode"
-          mkdir -p "$RENODE_DIR"
-          wget -q https://builds.renode.io/renode-latest.linux-portable.tar.gz -O "$RENODE_DIR/renode.tar.gz"
-          tar -xf "$RENODE_DIR/renode.tar.gz" -C "$RENODE_DIR" --strip-components=1
-          
-          # Add Renode and pip user bin to PATH for the rest of this script
-          export PATH="$RENODE_DIR:$HOME/.local/bin:$PATH"
-          renode --version
-
-          # --- 3. Run the test ---
-          robot -d artifacts/uart_capture tests/nrf52_uart_capture.robot
-
-      - name: Upload UART capture artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: renode-uart-capture-logs
-          path: |
-            artifacts/uart_capture/**
-            uart_capture.renode.log
-            uart_capture.device.log
           if-no-files-found: warn
