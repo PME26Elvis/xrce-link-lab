@@ -1,6 +1,7 @@
 *** Settings ***
 Library           Process
 Library           OperatingSystem
+Library           String
 
 *** Variables ***
 ${ELF}            build/zephyr/zephyr.elf
@@ -17,9 +18,14 @@ Start Renode And Get PTY
     # 開 Renode，讓它跑 3 秒再退出；同時把 log 存起來
     ${p}=    Start Process    bash  -lc    "renode -e 's @${RESC_TMP}; start; sleep 3; q' > ${RENODE_LOG} 2>&1"    shell=True
     Wait For Process    ${p}    timeout=40s
-    # 從 log 找出 "PTY device path: /dev/pts/N" 並取出路徑 (更穩健的 grep + sed)
-    Run Process    bash  -lc    "grep -o 'PTY device path: /dev/pts/[0-9]+' ${RENODE_LOG} | sed 's/PTY device path: //g' | tail -n1 > ${CURDIR}/pty.txt"    shell=True
-    ${pty}=    Get File    ${CURDIR}/pty.txt
+
+    # 【新方法】直接讀取 Renode log 檔案，在 Robot 內部用字串處理，避免檔案 I/O 競爭問題
+    File Should Exist    ${RENODE_LOG}
+    ${log_content}=    Get File    ${RENODE_LOG}
+    # 用正規表示式從 log 內容中直接提取 PTY 路徑
+    ${matches}=    Get Regexp Matches    ${log_content}    PTY device path: (/dev/pts/\\d+)    1
+    # Get Regexp Matches 會返回一個 list，我們取第一個元素
+    ${pty}=    Set Variable If    len(${matches}) > 0    ${matches[0]}    ${EMPTY}
     RETURN    ${pty}
 
 *** Test Cases ***
