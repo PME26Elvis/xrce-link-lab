@@ -17,8 +17,8 @@ Start Renode And Get PTY
     # 開 Renode，讓它跑 3 秒再退出；同時把 log 存起來
     ${p}=    Start Process    bash  -lc    "renode -e 's @${RESC_TMP}; start; sleep 3; q' > ${RENODE_LOG} 2>&1"    shell=True
     Wait For Process    ${p}    timeout=40s
-    # 從 log 找出 "PTY device path: /dev/pts/N" 並取出路徑
-    Run Process    bash  -lc    "grep -oP 'PTY device path: \\K/dev/pts/[0-9]+' ${RENODE_LOG} | tail -n1 > ${CURDIR}/pty.txt"    shell=True
+    # 從 log 找出 "PTY device path: /dev/pts/N" 並取出路徑 (更穩健的 grep + sed)
+    Run Process    bash  -lc    "grep -o 'PTY device path: /dev/pts/[0-9]+' ${RENODE_LOG} | sed 's/PTY device path: //g' | tail -n1 > ${CURDIR}/pty.txt"    shell=True
     ${pty}=    Get File    ${CURDIR}/pty.txt
     RETURN    ${pty}
 
