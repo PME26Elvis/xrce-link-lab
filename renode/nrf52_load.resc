@@ -8,7 +8,3 @@ sysbus LoadELF __ELF_PATH__
 
 emulation CreateUartPtyTerminal "pty0"
 connector Connect sysbus.uart0 pty0
-
-# 主動把 PTY 路徑印到 Renode log，方便 CI 擷取
-log "PTY device path: @{sysbus.uart0.FileName}"
-
