@@ -4,7 +4,7 @@ mach create "nrf52-ci"
 machine LoadPlatformDescription @platforms/cpus/nrf52.repl
 
 # 由 Robot/CI 以 sed 注入絕對路徑
-sysbus LoadELF @{ELF_PATH}
+sysbus LoadELF __ELF_PATH__
 
 emulation CreateUartPtyTerminal "pty0"
 connector Connect sysbus.uart0 pty0
