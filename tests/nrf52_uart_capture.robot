@@ -4,8 +4,8 @@ Library           OperatingSystem
 Library           String
 *** Variables ***
 ${ELF}            build/zephyr/zephyr.elf
-${RESC}           ${CURDIR}${/}..${/}renode${/}nrf52_load.resc
-${RESC_TMP}       ${CURDIR}${/}..${/}renode${/}_nrf52_uart_capture.resc
+${RESC}           ${CURDIR}${/}..${/}renode${/}nrf52_uart_capture.resc
+${RESC_TMP}       ${CURDIR}${/}..${/}renode${/}_nrf52_uart_capture.tmp.resc
 ${RENODE_LOG}     ${CURDIR}${/}..${/}uart_capture.renode.log
 ${UART_LOG}       ${CURDIR}${/}..${/}uart_capture.device.log
 
@@ -14,8 +14,8 @@ Start Renode And Get PTY
     ${cmd}=    Set Variable  sed "s|__ELF_PATH__|${ELF}|g" ${RESC} > ${RESC_TMP}
     Run Process    bash  -lc    ${cmd}    shell=True
     File Should Exist    ${RESC_TMP}
-    # 【最終方案】開 Renode，由 Robot Framework 直接將 stdout/stderr 導向日誌檔，避免 shell redirection 問題
-    ${p}=    Start Process    renode    -e    s @${RESC_TMP}; start; sleep 3; q    stdout=${RENODE_LOG}    stderr=STDOUT
+        # 【最終方案 v2】使用獨立 .resc，並在外部命令中明確 log PTY 路徑
+    ${p}=    Start Process    renode    -e    s @${RESC_TMP}; log "PTY device path: @{sysbus.uart0.FileName}"; start; sleep 3; q    stdout=${RENODE_LOG}    stderr=STDOUT
     Wait For Process    ${p}    timeout=40s
 
     # 【新方法】直接讀取 Renode log 檔案，在 Robot 內部用字串處理，避免檔案 I/O 競爭問題
