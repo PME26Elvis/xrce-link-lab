@@ -13,8 +13,5 @@ start
 emulation RunFor "1.0"
 pause
 
-try {
-    log "UART PTY created."
-} catch {
-    log "UART PTY created."
-}
+# 主動把 PTY 路徑印到 Renode log，方便 CI 擷取
+log "PTY device path: @{sysbus.uart0.FileName}"
