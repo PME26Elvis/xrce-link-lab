@@ -789,18 +789,11 @@ jobs:
           fi
           file build/zephyr/zephyr.elf
   
-      - name: Install Renode (portable) + Robot
+      - name: Install Renode + Robot
         run: |
           set -euo pipefail
           sudo apt-get update
-          # Renode 需要 mono runtime；用系統套件即可
-          sudo apt-get install -y --no-install-recommends mono-complete ca-certificates curl xz-utils
-          # 下載可攜版 Renode 並加入 PATH
-          mkdir -p $HOME/tools/renode
-          curl -L https://builds.renode.io/renode-latest.linux-portable.tar.gz \
-            | tar xz --strip-components=1 -C $HOME/tools/renode
-          echo "$HOME/tools/renode" >> "$GITHUB_PATH"
-          # RobotFramework
+          sudo apt-get install -y --no-install-recommends renode
           python3 -m pip install --user --no-cache-dir robotframework
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
   
