@@ -17,8 +17,8 @@ Start Renode And Get PTY
     # 開 Renode，讓它跑 3 秒再退出；同時把 log 存起來
     ${p}=    Start Process    bash  -lc    "renode -e 's @${RESC_TMP}; start; sleep 3; q' > ${RENODE_LOG} 2>&1"    shell=True
     Wait For Process    ${p}    timeout=40s
-    # 從 log 取出 /dev/pts/N
-    Run Process    bash  -lc    "grep -Eo '/dev/pts/[0-9]+' ${RENODE_LOG} | tail -n1 > ${CURDIR}/pty.txt"    shell=True
+    # 從 log 找出 "PTY device path: /dev/pts/N" 並取出路徑
+    Run Process    bash  -lc    "grep -oP 'PTY device path: \\K/dev/pts/[0-9]+' ${RENODE_LOG} | tail -n1 > ${CURDIR}/pty.txt"    shell=True
     ${pty}=    Get File    ${CURDIR}/pty.txt
     RETURN    ${pty}
 
@@ -27,7 +27,7 @@ UART heartbeat can be captured from PTY
     [Documentation]    從 Renode 取得 PTY，讀取 2 秒輸出，應包含 XRCE-STUB heartbeat。
     File Should Exist    ${ELF}
     ${PTY}=    Start Renode And Get PTY
-    Run Keyword If    '${PTY}' == ''    Fail    Could not determine PTY path from Renode log.
+    Run Keyword If    '${PTY}' == ''    Fail    Could not determine PTY path from Renode log. Check ${RENODE_LOG}.
 
     # 讀取 PTY 2 秒並寫入檔案（用 cat 搭配 timeout）
     ${reader}=    Start Process    bash  -lc    "timeout 2s cat ${PTY} > ${UART_LOG}"    shell=True
