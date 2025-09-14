@@ -708,6 +708,54 @@ jobs:
             agent_e2e.log
           if-no-files-found: warn
 
+  zephyr-build-and-run-xrce-stub:
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+  
+      - name: Setup Zephyr (SDK + west)
+        uses: zephyrproject-rtos/action-zephyr-setup@v1
+        with:
+          app-path: app
+          toolchains: arm-zephyr-eabi
+          sdk-version: 0.16.3
+  
+      - name: Build XRCE stub app (nRF52840)
+        run: |
+          set -euo pipefail
+          west update
+          west build firmware/xrce_nrf52_client -b nrf52840dk/nrf52840 --pristine always
+          file build/zephyr/zephyr.elf
+          file build/zephyr/zephyr.hex
+  
+      - name: Install Renode + Robot
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends renode
+          python3 -m pip install --user --no-cache-dir robotframework
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+  
+      - name: Run Renode smoke (XRCE stub)
+        run: |
+          set -euo pipefail
+          # 復用你已存在的 tests/renode_nrf52_load.robot 風格；若名稱不同，用你現在綠燈那支
+          robot -L TRACE -d artifacts/xrce_stub_run tests/nrf52_load.robot
+  
+      - name: Upload artifacts (ELF/HEX/.config/DTS + logs)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xrce-stub-elf-and-run
+          path: |
+            build/zephyr/zephyr.*
+            build/zephyr/.config
+            build/zephyr/zephyr.dts
+            artifacts/xrce_stub_run/**
+          if-no-files-found: warn
 
 #   microros-zephyr-nrf52840-build-z4_0:
 #     runs-on: ubuntu-22.04
