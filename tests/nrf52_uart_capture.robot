@@ -1,44 +1,41 @@
 *** Settings ***
 Library           Process
 Library           OperatingSystem
-Library           String
 
 *** Variables ***
-${REPO_ROOT}      ${CURDIR}/..
-${ELF}            ${REPO_ROOT}/build/zephyr/zephyr.elf
-${RESC}           ${REPO_ROOT}/renode/nrf52_load.resc
-${RESC_TMP}       ${OUTPUT_DIR}/_nrf52_uart_capture.resc
-${RENODE_LOG}     ${OUTPUT_DIR}/uart_capture.renode.log
-${UART_LOG}       ${OUTPUT_DIR}/uart_capture.device.log
+${ELF}            build/zephyr/zephyr.elf
+${RESC}           renode/nrf52_load.resc
+${RESC_TMP}       renode/_nrf52_uart_capture.resc
+${RENODE_LOG}     uart_capture.renode.log
+${UART_LOG}       uart_capture.device.log
 
 *** Keywords ***
-Start Renode In Background And Get PTY
-    ${resc_text}=              Get File           ${RESC}
-    ${patched}=                Replace String     ${resc_text}    __ELF_PATH__    ${ELF}
-    Create File                ${RESC_TMP}        ${patched}
-    File Should Exist          ${RESC_TMP}
-    ${renode}=    Start Process    bash    -lc    renode -e "s @${RESC_TMP}; start"    stdout=${RENODE_LOG}    stderr=STDOUT    shell=True
-    Sleep    1.0s
-    ${pty}=    Set Variable    ${EMPTY}
-    FOR    ${i}    IN RANGE    1    8
-        ${pty}=    Run Process    bash    -lc    "grep -Eo '/dev/pts/[0-9]+' '${RENODE_LOG}' | tail -n1 || true"    shell=True    stdout=PTY
-        Run Keyword If    '${PTY}' != ''    Exit For Loop
-        Sleep    0.5s
-    END
-    RETURN    ${PTY}    ${renode}
+Start Renode And Get PTY
+    ${cmd}=    Set Variable  sed "s|@{ELF_PATH}|${ELF}|g" ${RESC} > ${RESC_TMP}
+    Run Process    bash  -lc    ${cmd}    shell=True
+    File Should Exist    ${RESC_TMP}
+    # 開 Renode，讓它跑 3 秒再退出；同時把 log 存起來
+    ${p}=    Start Process    bash  -lc    renode -e "s @${RESC_TMP}; start; sleep 3; q" > ${RENODE_LOG} 2>&1    shell=True
+    Wait For Process    ${p}    timeout=40s
+    # 從 log 取出 /dev/pts/N
+    ${pty}=    Run Process    bash  -lc    "grep -Eo '/dev/pts/[0-9]+' ${RENODE_LOG} | tail -n1"    shell=True    stdout=PTY
+    [Return]    ${PTY}
 
 *** Test Cases ***
 UART heartbeat can be captured from PTY
-    File Should Exist          ${ELF}
-    ${PTY}    ${RENODE}=       Start Renode In Background And Get PTY
-    Run Keyword If             '${PTY}' == ''    Fail    Could not determine PTY path from Renode log.
+    [Documentation]    從 Renode 取得 PTY，讀取 2 秒輸出，應包含 XRCE-STUB heartbeat。
+    File Should Exist    ${ELF}
+    ${PTY}=    Start Renode And Get PTY
+    Run Keyword If    '${PTY}' == ''    Fail    Could not determine PTY path from Renode log.
 
-    Run Process    bash    -lc    "timeout 2s cat ${PTY} > '${UART_LOG}'"    shell=True
-    File Should Exist          ${UART_LOG}
+    # 讀取 PTY 2 秒並寫入檔案（用 cat 搭配 timeout）
+    ${reader}=    Start Process    bash  -lc    "timeout 2s cat ${PTY} > ${UART_LOG}"    shell=True
+    Wait For Process    ${reader}    timeout=10s
+
+    File Should Exist    ${UART_LOG}
     ${sz}=    Get File Size    ${UART_LOG}
-    Should Be True             ${sz} > 0
+    Should Be True    ${sz} > 0
 
-    ${hit}=    Run Process     bash  -lc   "grep -c 'XRCE-STUB heartbeat' '${UART_LOG}' || true"    shell=True    stdout=COUNT
-    Should Not Be Equal        ${COUNT}    0
-
-    Terminate Process          ${RENODE}
+    # 你的 stub app 會每 500ms 印出 XRCE-STUB heartbeat
+    ${hit}=    Run Process    bash  -lc    "grep -c 'XRCE-STUB heartbeat' ${UART_LOG} || true"    shell=True    stdout=COUNT
+    Should Not Be Equal    ${COUNT}    0
