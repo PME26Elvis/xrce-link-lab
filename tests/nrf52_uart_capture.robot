@@ -2,13 +2,12 @@
 Library           Process
 Library           OperatingSystem
 Library           String
-
 *** Variables ***
 ${ELF}            build/zephyr/zephyr.elf
-${RESC}           renode/nrf52_load.resc
-${RESC_TMP}       renode/_nrf52_uart_capture.resc
-${RENODE_LOG}     uart_capture.renode.log
-${UART_LOG}       uart_capture.device.log
+${RESC}           ${CURDIR}${/}..${/}renode${/}nrf52_load.resc
+${RESC_TMP}       ${CURDIR}${/}..${/}renode${/}_nrf52_uart_capture.resc
+${RENODE_LOG}     ${CURDIR}${/}..${/}uart_capture.renode.log
+${UART_LOG}       ${CURDIR}${/}..${/}uart_capture.device.log
 
 *** Keywords ***
 Start Renode And Get PTY
