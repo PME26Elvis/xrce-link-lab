@@ -724,34 +724,44 @@ jobs:
             build/zephyr/zephyr.dts
 
   renode-nrf52-load-smoke:
-    needs: [zephyr-build-nrf52-base-app]
+    needs: [zephyr-build-nrf52-base-app] # 依賴 nrf52_base_app 的建置
     runs-on: ubuntu-22.04
     defaults:
       run:
         shell: bash
     steps:
       - uses: actions/checkout@v4
-  
+
       - name: Try download canonical artifact (nrf52-base-elf)
         id: dl
         continue-on-error: true
         uses: actions/download-artifact@v4
         with:
-          name: nrf52-base-elf
+          name: nrf52-base-elf-v2 # 使用 v2 artifact
           path: artifacts/nrf52
 
+      # 僅在 artifact 下載失敗時，才設定 Zephyr 環境並重建
       - name: Fallback:rebuild ELF if artifact missing
         if: steps.dl.outcome == 'failure'
-        run: |
-          set -euo pipefail
-          echo "Artifact 'nrf52-base-elf' not found, rebuilding locally..."
-          west update
-          west build firmware/nrf52_base_app -b nrf52840dk/nrf52840 --pristine always
-          mkdir -p artifacts/nrf52
-          cp -f build/zephyr/zephyr.elf artifacts/nrf52/
-          cp -f build/zephyr/zephyr.hex artifacts/nrf52/ || true
-          cp -f build/zephyr/.config artifacts/nrf52/ || true
-          cp -f build/zephyr/zephyr.dts artifacts/nrf52/ || true
+        steps:
+          - name: Setup Zephyr for fallback build
+            uses: zephyrproject-rtos/action-zephyr-setup@v1
+            with:
+              app-path: app
+              toolchains: arm-zephyr-eabi
+              sdk-version: 0.16.3
+
+          - name: Run fallback build
+            run: |
+              set -euo pipefail
+              echo "Artifact 'nrf52-base-elf-v2' not found, rebuilding locally..."
+              west update
+              west build firmware/nrf52_base_app -b nrf52840dk/nrf52840 --pristine always
+              mkdir -p artifacts/nrf52
+              cp -f build/zephyr/zephyr.elf artifacts/nrf52/
+              cp -f build/zephyr/zephyr.hex artifacts/nrf52/ || true
+              cp -f build/zephyr/.config artifacts/nrf52/ || true
+              cp -f build/zephyr/zephyr.dts artifacts/nrf52/ || true
 
       - name: Show files we will feed to Renode
       # 不論下載或重建，這裡都印出最後實際使用的檔案
@@ -760,34 +770,41 @@ jobs:
           ls -lah artifacts/nrf52
           test -f artifacts/nrf52/zephyr.elf
 
-      - name: Install Renode (portable) & RobotFramework
+      - name: Cache Renode portable
+        id: cache-renode
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/renode-portable
+          key: renode-portable-v1-${{ runner.os }}
+
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-robot
+
+      - name: Install deps, setup PATH, and run test
         run: |
           set -euo pipefail
+          # --- 1. Install Dependencies ---
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends wget xz-utils tar
-          # 下載並解壓 portable 版到暫存資料夾
-          mkdir -p "$RUNNER_TEMP/renode"
-          cd "$RUNNER_TEMP"
-          wget -q https://builds.renode.io/renode-latest.linux-portable.tar.gz
-          tar -xf renode-latest.linux-portable.tar.gz -C "$RUNNER_TEMP/renode" --strip-components=1
-          # 將 renode 加入 PATH，之後可直接呼叫 `renode`
-          echo "$RUNNER_TEMP/renode" >> "$GITHUB_PATH"
-          # 檢查版本
-          "$RUNNER_TEMP/renode/renode" --version || true
-
-          # RobotFramework 供測試編排使用
           python3 -m pip install --user --no-cache-dir robotframework
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      - name: Prepare Renode script (inject ELF path)
-        run: |
-          set -euo pipefail
-          sed "s|@{ELF_PATH}|${GITHUB_WORKSPACE}/artifacts/nrf52/zephyr.elf|g" renode/nrf52_load.resc > renode/_nrf52_load.resc
-          sed -n '1,120p' renode/_nrf52_load.resc
+          # --- 2. Setup PATH for this step ---
+          RENODE_DIR="$RUNNER_TEMP/renode-portable"
+          mkdir -p "$RENODE_DIR"
+          if [ "${{ steps.cache-renode.outputs.cache-hit }}" != 'true' ]; then
+            echo "Renode cache miss. Downloading..."
+            wget -q https://builds.renode.io/renode-latest.linux-portable.tar.gz -O "$RENODE_DIR/renode.tar.gz"
+            tar -xf "$RENODE_DIR/renode.tar.gz" -C "$RENODE_DIR" --strip-components=1
+          else
+            echo "Renode cache hit."
+          fi
+          export PATH="$RENODE_DIR:$HOME/.local/bin:$PATH"
+          renode --version
 
-      - name: Run Renode load smoke
-        run: |
-          set -euo pipefail
+          # --- 3. Run the test ---
           robot -L TRACE \
             -d artifacts/renode_smoke \
             -v ELF:${GITHUB_WORKSPACE}/artifacts/nrf52/zephyr.elf \
