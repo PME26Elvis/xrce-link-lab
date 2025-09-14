@@ -14,8 +14,8 @@ Start Renode And Get PTY
     ${cmd}=    Set Variable  sed "s|__ELF_PATH__|${ELF}|g" ${RESC} > ${RESC_TMP}
     Run Process    bash  -lc    ${cmd}    shell=True
     File Should Exist    ${RESC_TMP}
-    # 開 Renode，讓它跑 3 秒再退出；同時把 log 存起來
-    ${p}=    Start Process    bash  -lc    "renode -e 's @${RESC_TMP}; start; sleep 3; q' > ${RENODE_LOG} 2>&1"    shell=True
+    # 【最終方案】開 Renode，由 Robot Framework 直接將 stdout/stderr 導向日誌檔，避免 shell redirection 問題
+    ${p}=    Start Process    renode    -e    s @${RESC_TMP}; start; sleep 3; q    stdout=${RENODE_LOG}    stderr=STDOUT
     Wait For Process    ${p}    timeout=40s
 
     # 【新方法】直接讀取 Renode log 檔案，在 Robot 內部用字串處理，避免檔案 I/O 競爭問題
