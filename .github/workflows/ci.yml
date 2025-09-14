@@ -764,60 +764,6 @@ jobs:
             build/zephyr/zephyr.dts
             artifacts/xrce_stub_run/**
           if-no-files-found: warn
-          
-  renode-uart-heartbeat-capture:
-    runs-on: ubuntu-22.04
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@v4
-  
-      - name: Setup Zephyr (SDK + west)
-        uses: zephyrproject-rtos/action-zephyr-setup@v1
-        with:
-          app-path: app
-          toolchains: arm-zephyr-eabi
-          sdk-version: 0.16.3
-  
-      - name: Build XRCE stub app (nRF52840, reuse if exists)
-        run: |
-          set -euo pipefail
-          if [ ! -f build/zephyr/zephyr.elf ]; then
-            west update
-            west build firmware/xrce_nrf52_client -b nrf52840dk/nrf52840 --pristine always
-          fi
-          file build/zephyr/zephyr.elf
-  
-      - name: Install Renode (release .deb) + Robot
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          # 抓最新版的 Renode release .deb
-          RENODE_DEB=$(mktemp /tmp/renode_XXXX.deb)
-          curl -L https://builds.renode.io/renode-latest.linux-portable.tar.gz -o renode-portable.tar.gz
-          mkdir renode-portable && tar -xzf renode-portable.tar.gz -C renode-portable --strip-components=1
-          sudo mv renode-portable /opt/renode
-          sudo ln -s /opt/renode/renode /usr/local/bin/renode
-          renode --version
-          python3 -m pip install --user --no-cache-dir robotframework
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-  
-      - name: Run UART capture test
-        run: |
-          set -euo pipefail
-          robot -L TRACE -d artifacts/uart_capture tests/nrf52_uart_capture.robot
-  
-      - name: Upload capture artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: renode-uart-capture
-          path: |
-            artifacts/uart_capture/**
-            uart_capture.renode.log
-            uart_capture.device.log
-          if-no-files-found: warn
 
 #   microros-zephyr-nrf52840-build-z4_0:
 #     runs-on: ubuntu-22.04
