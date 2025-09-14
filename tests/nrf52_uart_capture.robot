@@ -11,15 +11,16 @@ ${UART_LOG}       uart_capture.device.log
 
 *** Keywords ***
 Start Renode And Get PTY
-    ${cmd}=    Set Variable  sed "s|@{ELF_PATH}|${ELF}|g" ${RESC} > ${RESC_TMP}
+    ${cmd}=    Set Variable  sed "s|__ELF_PATH__|${ELF}|g" ${RESC} > ${RESC_TMP}
     Run Process    bash  -lc    ${cmd}    shell=True
     File Should Exist    ${RESC_TMP}
     # 開 Renode，讓它跑 3 秒再退出；同時把 log 存起來
-    ${p}=    Start Process    bash  -lc    renode -e "s @${RESC_TMP}; start; sleep 3; q" > ${RENODE_LOG} 2>&1    shell=True
+    ${p}=    Start Process    bash  -lc    "renode -e 's @${RESC_TMP}; start; sleep 3; q' > ${RENODE_LOG} 2>&1"    shell=True
     Wait For Process    ${p}    timeout=40s
     # 從 log 取出 /dev/pts/N
-    ${pty}=    Run Process    bash  -lc    "grep -Eo '/dev/pts/[0-9]+' ${RENODE_LOG} | tail -n1"    shell=True    stdout=PTY
-    [Return]    ${PTY}
+    ${pty_out}=    Run Process    bash  -lc    "grep -Eo '/dev/pts/[0-9]+' ${RENODE_LOG} | tail -n1"    shell=True    stdout_path=${CURDIR}/pty.txt
+    ${pty}=    Get File    ${CURDIR}/pty.txt
+    RETURN    ${pty}
 
 *** Test Cases ***
 UART heartbeat can be captured from PTY
@@ -37,5 +38,5 @@ UART heartbeat can be captured from PTY
     Should Be True    ${sz} > 0
 
     # 你的 stub app 會每 500ms 印出 XRCE-STUB heartbeat
-    ${hit}=    Run Process    bash  -lc    "grep -c 'XRCE-STUB heartbeat' ${UART_LOG} || true"    shell=True    stdout=COUNT
-    Should Not Be Equal    ${COUNT}    0
+    ${output}=    Get File    ${UART_LOG}
+    Should Contain    ${output}    XRCE-STUB heartbeat
