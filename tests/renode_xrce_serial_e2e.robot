@@ -7,18 +7,18 @@ Library           String
 ${REPO_ROOT}      ${CURDIR}/..
 ${ELF}            ${REPO_ROOT}/build/zephyr/zephyr.elf
 ${RESC}           ${REPO_ROOT}/renode/nrf52_load.resc
-${RESC_TMP}       ${REPO_ROOT}/renode/_nrf52_load_e2e.resc
-${RENODE_LOG}     ${REPO_ROOT}/artifacts/renode_agent_serial/renode_e2e.log
-${AGENT_LOG}      ${REPO_ROOT}/artifacts/renode_agent_serial/agent_e2e.log
+${RESC_TMP}       ${OUTPUT_DIR}/_nrf52_load_e2e.resc
+${RENODE_LOG}     ${OUTPUT_DIR}/renode_e2e.log
+${AGENT_LOG}      ${OUTPUT_DIR}/agent_e2e.log
 ${AGENT_BIN}      /usr/local/bin/MicroXRCEAgent
 
 *** Keywords ***
 Start Renode In Background And Get PTY
-    Run Process    bash    -lc    "mkdir -p ${REPO_ROOT}/artifacts/renode_agent_serial"    shell=True
     ${resc_text}=              Get File           ${RESC}
     ${patched}=                Replace String     ${resc_text}    __ELF_PATH__    ${ELF}
     Create File                ${RESC_TMP}        ${patched}
     File Should Exist          ${RESC_TMP}
+
     ${renode}=    Start Process    bash    -lc    renode -e "s @${RESC_TMP}; start"    stdout=${RENODE_LOG}    stderr=STDOUT    shell=True
     Sleep    1.0s
     ${pty}=    Set Variable    ${EMPTY}
@@ -31,7 +31,6 @@ Start Renode In Background And Get PTY
 
 *** Test Cases ***
 Renode + XRCE Agent (serial PTY) E2E smoke
-    [Documentation]    背景啟 Renode→取得 PTY→啟 XRCE Agent(serial)→驗證 Agent 有輸出→收尾。
     Directory Should Exist     ${REPO_ROOT}
     File Should Exist          ${ELF}
     File Should Exist          ${RESC}
