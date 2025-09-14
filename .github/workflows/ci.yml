@@ -766,26 +766,31 @@ jobs:
           if-no-files-found: warn
           
   renode-uart-heartbeat-capture:
-    needs: [zephyr-build-nrf52-base-app]
+    # 這個測試需要 xrce_nrf52_client 韌體，因为它會印出 "XRCE-STUB heartbeat"
+    # 我們讓它依賴 zephyr-build-and-run-xrce-stub job
+    needs: [zephyr-build-and-run-xrce-stub]
     runs-on: ubuntu-22.04
     defaults:
       run:
         shell: bash
     steps:
       - uses: actions/checkout@v4
+      
+      # 為了讓此 job 能獨立測試，我們也加入 west setup
+      - name: Setup Zephyr (SDK + west)
+        uses: zephyrproject-rtos/action-zephyr-setup@v1
+        with:
+          app-path: app
+          toolchains: arm-zephyr-eabi
+          sdk-version: 0.16.3
 
-      - name: Download nRF52 base app ELF
+      - name: Download XRCE stub app ELF
         uses: actions/download-artifact@v4
         with:
-          name: nrf52-base-elf
-          path: build/zephyr
-
-      - name: Verify downloaded ELF
-        run: |
-          set -euo pipefail
-          ls -l build/zephyr
-          test -f build/zephyr/zephyr.elf
-
+          # 從 xrce-stub-elf-and-run job 下載產物
+          name: xrce-stub-elf-and-run
+          path: artifacts/downloaded-stub
+          
       - name: Install deps, setup PATH, and run test in one step
         run: |
           set -euo pipefail
