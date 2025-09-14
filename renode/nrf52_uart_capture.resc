@@ -1,0 +1,10 @@
+using sysbus
+
+mach create "nrf52-ci-capture"
+machine LoadPlatformDescription @platforms/cpus/nrf52.repl
+
+# 由 Robot/CI 注入絕對路徑
+sysbus LoadELF __ELF_PATH__
+
+emulation CreateUartPtyTerminal "pty0"
+connector Connect sysbus.uart0 pty0
