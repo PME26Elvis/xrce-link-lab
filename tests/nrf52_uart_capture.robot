@@ -16,11 +16,14 @@ Start Renode And Get PTY
     Run Process    bash  -lc    ${cmd}    shell=True
     File Should Exist    ${RESC_TMP}
 
-    # 【最終方案 v6】使用 Renode 官方推薦的 Robot Server 模式，最為穩健
-    ${p}=    Start Process    renode    --robot-server-port    9999    --execute    s @${RESC_TMP}    stdout=${RENODE_LOG}    stderr=STDOUT
-    Sleep    5s    # 在 CI 環境中，給予更長的啟動時間
+    # 【最終方案 v7】使用 --disable-xwt 模式啟動，並由 Robot 遠端載入腳本，確保 Renode 不會提前退出
+    ${p}=    Start Process    renode    --disable-xwt    --robot-server-port    9999    stdout=${RENODE_LOG}    stderr=STDOUT
+    Sleep    5s    # 在 CI 環境中，給予更長的啟動時間以確保 Robot Server 完全就緒
 
     # 透過 Remote Library 執行 Renode 關鍵字
+    # 遠端載入腳本
+    Run Keyword    Execute Command    s @${RESC_TMP}
+    # 啟動模擬
     Run Keyword    Start Emulation
 
     # 查詢 PTY 屬性
