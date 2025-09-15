@@ -1,7 +1,7 @@
 *** Settings ***
 Library           Process
 Library           OperatingSystem
-Library           Telnet
+Library           Remote    127.0.0.1:9999    # 連接到 Renode 的 Robot Server
 Library           String
 *** Variables ***
 ${ELF}            build/zephyr/zephyr.elf
@@ -16,29 +16,20 @@ Start Renode And Get PTY
     Run Process    bash  -lc    ${cmd}    shell=True
     File Should Exist    ${RESC_TMP}
 
-    # 【最終方案 v5】使用 --plain 模式啟動 Renode，並由 Telnet 控制 start，確保 Monitor 穩定運行
-    ${p}=    Start Process    renode    --plain    --port    1234    -e    s @${RESC_TMP}    stdout=${RENODE_LOG}    stderr=STDOUT
-    Sleep    2s    # 等待 Renode 完全啟動
+    # 【最終方案 v6】使用 Renode 官方推薦的 Robot Server 模式，最為穩健
+    ${p}=    Start Process    renode    --robot-server-port    9999    --execute    s @${RESC_TMP}    stdout=${RENODE_LOG}    stderr=STDOUT
+    Sleep    3s    # 等待 Renode Robot Server 完全啟動
 
-    # 連接到 Renode Monitor
-    Open Connection    127.0.0.1    port=1234    timeout=10s
-    Login    ${EMPTY}    ${EMPTY}    # Renode Monitor 不需要帳號密碼
+    # 透過 Remote Library 執行 Renode 關鍵字
+    Run Keyword    Start Emulation
 
-    # 切換到正確的機器上下文，啟動模擬，然後查詢 PTY 屬性
-    Write    mach set "nrf52-ci-capture"
-    ${output}=    Read Until Prompt    (nrf52-ci-capture)
-    Write    start
-    ${output}=    Read Until Prompt    (nrf52-ci-capture)
-    Write    get-property sysbus.uart0.FileName
-    ${pty_output}=    Read Until Prompt    (nrf52-ci-capture)
+    # 查詢 PTY 屬性
+    ${pty}=    Run Keyword    Get Machine Uart PTY    nrf52-ci-capture    sysbus.uart0
 
-    # 從回傳結果中提取 PTY 路徑
-    ${matches}=    Get Regexp Matches    ${pty_output}    (/dev/pts/\\d+)
-    ${pty}=    Set Variable If    len(${matches}) > 0    ${matches[0]}    ${EMPTY}
+    # 關閉 Renode 並清理 (透過 Remote Library)
+    Run Keyword    Stop Emulation
+    Run Keyword    Shutdown Renode
 
-    # 關閉 Renode 並清理
-    Write    q
-    Close Connection
     Wait For Process    ${p}    timeout=20s
     RETURN    ${pty}
 
@@ -60,3 +51,13 @@ UART heartbeat can be captured from PTY
     # 你的 stub app 會每 500ms 印出 XRCE-STUB heartbeat
     ${output}=    Get File    ${UART_LOG}
     Should Contain    ${output}    XRCE-STUB heartbeat
+
+*** Keywords ***
+Get Machine Uart PTY
+    [Arguments]    ${machine_name}    ${uart_name}
+    ${output}=    Execute Command    ${machine_name} ${uart_name}
+    ${matches}=    Get Regexp Matches    ${output}    Host file: (.*)
+    RETURN    ${matches[0]}
+
+Shutdown Renode
+    Execute Command    q
