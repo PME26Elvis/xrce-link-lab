@@ -1,0 +1,19 @@
+using sysbus
+
+mach create "serial-bridge-demo"
+machine LoadPlatformDescription @__PLATFILE__
+
+# 建立 PTY 並把第一個 UART 綁上去（PL011 在 versatile.repl 名稱通常是 sysbus.uart0）
+emulation CreateUartPtyTerminal "pty0"
+connector Connect sysbus.uart0 pty0
+
+# 給 CI 一個可解析的 PTY 路徑
+log "UART PTY: @{sysbus.uart0.FileName}"
+
+# 等 0.5s 再從 UART 寫一行字，供 e2e 驗證
+emulation RunFor "0.5"
+sysbus.uart0 WriteString "XRCE-STUB heartbeat\n"
+
+# 多跑一點時間，確保寫入完成
+emulation RunFor "1.0"
+q
