@@ -17,26 +17,26 @@ Start Renode And Extract PTY
     Run Process    bash    -lc    ${cmd}    shell=True
     File Should Exist       ${RESC_TMP}
 
-    # --disable-xwt 避免 GUI 需求，直接執行腳本並退出
+    # --disable-xwt 避免 GUI，執行腳本後退出；stdout 存到檔案
     ${p}=    Start Process    bash    -lc    "renode --disable-xwt -e \"s @${RESC_TMP}; q\""    shell=True    stdout=${RENODE_LOG}    stderr=STDOUT
     Wait For Process         ${p}    timeout=40s
     File Should Exist        ${RENODE_LOG}
 
-    # 從 log 找出固定格式 'PTY: /dev/pts/N'
-    ${pty_line}=    Run Process    bash    -lc    "grep -E 'PTY:\\s+/dev/pts/[0-9]+' ${RENODE_LOG} | tail -n1"    shell=True    stdout=PTYLINE
-    Should Not Be Equal    ${PTYLINE}    ${EMPTY}
+    # 以字串方式抓取 'PTY: /dev/pts/N' 這一行
+    ${rc}    ${PTYLINE}=    Run And Return Rc And Output    bash -lc "grep -E 'PTY:\\s+/dev/pts/[0-9]+' ${RENODE_LOG} | tail -n1"
+    Run Keyword If    ${rc} != 0    Fail    Could not find 'PTY: /dev/pts/N' in ${RENODE_LOG}
     ${pty}=    Replace String    ${PTYLINE}    PTY:     ${EMPTY}
     ${pty}=    Strip String      ${pty}
-    [Return]    ${pty}
+    RETURN    ${pty}
 
 *** Test Cases ***
 UART heartbeat can be captured from PTY
-    [Documentation]    從 Renode 取得 PTY，讀取 2 秒輸出，應包含 XRCE-STUB heartbeat。
+    [Documentation]    從 Renode 取得 PTY，讀取 2 秒裝置輸出，應包含 XRCE-STUB heartbeat。
     File Should Exist    ${ELF}
     ${PTY}=    Start Renode And Extract PTY
-    Run Keyword If    '${PTY}' == ''    Fail    Could not determine PTY path from Renode log (${RENODE_LOG}).
+    Run Keyword If    '${PTY}' == ''    Fail    Could not determine PTY path from ${RENODE_LOG}
 
-    # 讀取 PTY 2 秒並寫入檔案（用 cat 搭配 timeout）
+    # 讀取 PTY 2 秒並寫入檔案
     ${reader}=    Start Process    bash    -lc    "timeout 2s cat ${PTY} > ${UART_LOG}"    shell=True
     Wait For Process    ${reader}    timeout=10s
 
