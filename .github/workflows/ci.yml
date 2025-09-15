@@ -827,3 +827,54 @@ jobs:
           name: xrce-agent-smoke
           path: agent.log
           if-no-files-found: warn
+
+  uxr-session-e2e:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Zephyr
+        uses: zephyrproject-rtos/action-zephyr-setup@v1
+        with:
+          app-path: app
+          toolchains: arm-zephyr-eabi
+          sdk-version: 0.16.3
+
+      - name: Build XRCE client
+        run: |
+          set -euo pipefail
+          west update
+          west build firmware/xrce_nrf52_client -b nrf52840dk/nrf52840 --pristine always
+
+      - name: Run Renode + Agent E2E
+        run: |
+          set -euo pipefail
+          wget -q https://builds.renode.io/renode-latest.linux-portable.tar.gz -O renode.tar.gz
+          mkdir renode && tar -xf renode.tar.gz -C renode --strip-components=1
+          export PATH=$PWD/renode:$PATH
+          mkdir -p artifacts/e2e
+
+          # 啟動 Agent
+          (MicroXRCEAgent serial --dev /tmp/xrce_uart -b 115200 > artifacts/e2e/agent.log 2>&1 &)
+          sleep 2
+
+          # 啟動 Renode
+          echo 'using sysbus' > run.resc
+          echo 'mach create "nrf52"' >> run.resc
+          echo 'machine LoadPlatformDescription @platforms/cpus/nrf52.repl' >> run.resc
+          echo 'sysbus LoadELF build/zephyr/zephyr.elf' >> run.resc
+          echo 'emulation CreateUartPtyTerminal "pty0" "/tmp/xrce_uart"' >> run.resc
+          echo 'connector Connect sysbus.uart0 pty0' >> run.resc
+          echo 'start' >> run.resc
+
+          renode -e "i @run.resc" > artifacts/e2e/renode.log 2>&1 &
+          sleep 8
+
+          grep -q "Session created" artifacts/e2e/agent.log || (echo "No session" && exit 1)
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: uxr-session-e2e-logs
+          path: artifacts/e2e/**
