@@ -811,16 +811,21 @@ jobs:
         run: |
           set -euo pipefail
           test -f renode/nrf52_agent_serial.resc
-          # 先確認平台檔存在
-          test -f "${RENODE_BIN_DIR}/platforms/cpus/nrf52.repl"
+  
+          # 嘗試找 nrf52.repl
+          PLAT_DIR="$GITHUB_WORKSPACE/$RENODE_BIN_DIR/platforms"
+          if [ ! -f "$PLAT_DIR/cpus/nrf52.repl" ]; then
+            echo "::warning:: nrf52.repl not found at $PLAT_DIR/cpus/"
+            echo "Listing $PLAT_DIR:"
+            ls -R "$PLAT_DIR" || true
+          fi
   
           sed -e "s|__ELF_PATH__|$GITHUB_WORKSPACE/build/zephyr/zephyr.elf|g" \
-              -e "s|__PLATFORMS__|$GITHUB_WORKSPACE/${RENODE_BIN_DIR}/platforms|g" \
+              -e "s|__PLATFORMS__|$PLAT_DIR|g" \
             renode/nrf52_agent_serial.resc > renode/_run.resc
   
           echo "== _run.resc (head) =="
           sed -n '1,120p' renode/_run.resc
-
   
       - name: Run Renode <-> Agent E2E (serial over PTY)
         env:
