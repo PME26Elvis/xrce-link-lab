@@ -824,27 +824,35 @@ jobs:
           set -euo pipefail
           mkdir -p artifacts
           touch artifacts/renode.log artifacts/agent.log artifacts/uart.log
-  
+          
           echo "== Start Renode (headless) =="
           "${RENODE_BIN_DIR}/renode" --disable-xwt -e "i @renode/_run.resc" > artifacts/renode.log 2>&1 &
           RPID=$!
+          
+          # 等 Renode 寫出 log；同時確認 process 還在
           sleep 3
-  
+          ps -p "$RPID" -o pid,cmd || true
+          echo "== First 60 lines of renode.log =="
+          sed -n '1,60p' artifacts/renode.log || true
+          
           echo "== Parse PTY from renode.log =="
           PTY=""
           for i in {1..20}; do
-            PTY=$(grep -oE 'UART PTY: .*' artifacts/renode.log | tail -n1 | awk '{print $3}')
+            # 暫時關掉 pipefail，避免 grep 沒配到就讓整個 step fail
+            set +o pipefail
+            PTY=$( (grep -oE 'UART PTY: .*' artifacts/renode.log || true) | tail -n1 | awk '{print $3}')
+            set -o pipefail
             [ -n "${PTY}" ] && break
             sleep 0.5
           done
           echo "PTY=${PTY:-<none>}"
           if [ -z "${PTY}" ]; then
-            echo "::error:: PTY not found in artifacts/renode.log"
+            echo "::error:: PTY not found in artifacts/renode.log (showing tail)"
             tail -n +1 artifacts/renode.log || true
             kill $RPID 2>/dev/null || true
             exit 2
           fi
-  
+          
           echo "== Bridge PTY to /tmp/xrce_tty =="
           sudo socat -d -d PTY,raw,echo=0,link=/tmp/xrce_tty PTY,raw,echo=0,link=/tmp/xrce_peer >/dev/null 2>&1 &
           SC=$!
@@ -852,19 +860,19 @@ jobs:
           sudo socat -d -d file:"$PTY",raw,echo=0 file:/tmp/xrce_peer,raw,echo=0 >/dev/null 2>&1 &
           BR=$!
           sleep 1
-  
+          
           echo "== Start XRCE Agent =="
           ./Micro-XRCE-DDS-Agent/build/bin/MicroXRCEAgent serial -d /tmp/xrce_tty -b 115200 -v 4 > artifacts/agent.log 2>&1 &
           AP=$!
           sleep 1
-  
+          
           echo "== Tap UART for 3s =="
           timeout 3s cat /tmp/xrce_tty > artifacts/uart.log || true
           echo "== UART tail =="
           tail -n 80 artifacts/uart.log || true
           echo "== Agent tail =="
           tail -n 80 artifacts/agent.log || true
-  
+          
           if [ ! -s artifacts/uart.log ]; then
             echo "::error:: uart.log empty"
             tail -n +1 artifacts/renode.log || true
@@ -874,7 +882,7 @@ jobs:
           fi
           grep -q "XRCE-STUB heartbeat" artifacts/uart.log || \
             (echo "::warning:: heartbeat not found; showing tails"; tail -n 80 artifacts/uart.log || true; tail -n 80 artifacts/agent.log || true)
-  
+          
           kill $AP $BR $SC $RPID 2>/dev/null || true
           sleep 1
   
