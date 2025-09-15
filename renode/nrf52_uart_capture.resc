@@ -4,17 +4,15 @@ mach create "nrf52-ci-capture"
 machine LoadPlatformDescription @platforms/cpus/nrf52.repl
 mach set "nrf52-ci-capture"
 
-# 由 CI/Robot 注入絕對路徑
+# 由 CI/Robot 注入 ELF 路徑
 sysbus LoadELF __ELF_PATH__
 
-# 建立 PTY 並接到 UART0
-emulation CreateUartPtyTerminal "pty0"
-connector Connect sysbus.uart0 pty0
+# 直接建立固定路徑的 PTY，避免日誌解析不穩
+# 這行會在宿主建立 /tmp/xrce_uart 並命名此端子為 "term"
+emulation CreateUartPtyTerminal "term" "/tmp/xrce_uart"
+connector Connect sysbus.uart0 term
 
-# 明確打印 PTY 路徑（固定格式，方便 grep）
-log "PTY: " + pty0 Path
-
-# 跑一下讓裝置有輸出
+# 讓韌體有時間輸出字串
 start
 emulation RunFor "3.0"
 pause
