@@ -16,16 +16,18 @@ Start Renode And Get PTY
     Run Process    bash  -lc    ${cmd}    shell=True
     File Should Exist    ${RESC_TMP}
 
-    # 【最終方案 v4】啟動 Renode 並開放 Monitor TCP port，用 Telnet 直接查詢 PTY 路徑
-    ${p}=    Start Process    renode    --port    1234    -e    s @${RESC_TMP}; start    stdout=${RENODE_LOG}    stderr=STDOUT
+    # 【最終方案 v5】使用 --plain 模式啟動 Renode，並由 Telnet 控制 start，確保 Monitor 穩定運行
+    ${p}=    Start Process    renode    --plain    --port    1234    -e    s @${RESC_TMP}    stdout=${RENODE_LOG}    stderr=STDOUT
     Sleep    2s    # 等待 Renode 完全啟動
 
     # 連接到 Renode Monitor
     Open Connection    127.0.0.1    port=1234    timeout=10s
     Login    ${EMPTY}    ${EMPTY}    # Renode Monitor 不需要帳號密碼
 
-    # 切換到正確的機器上下文並查詢 PTY 屬性
+    # 切換到正確的機器上下文，啟動模擬，然後查詢 PTY 屬性
     Write    mach set "nrf52-ci-capture"
+    ${output}=    Read Until Prompt    (nrf52-ci-capture)
+    Write    start
     ${output}=    Read Until Prompt    (nrf52-ci-capture)
     Write    get-property sysbus.uart0.FileName
     ${pty_output}=    Read Until Prompt    (nrf52-ci-capture)
