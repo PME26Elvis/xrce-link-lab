@@ -815,41 +815,50 @@ jobs:
           mkdir -p artifacts
           : > artifacts/agent.log
           : > artifacts/uart.log
-      
+          
           echo "== Create two virtual PTYs =="
-          # /tmp/xrce_tty：給 Agent 使用
-          # /tmp/xrce_peer：模擬 MCU 端
+          # 建立兩端 PTY，權限會是 root:root（因為 sudo），接著我們會調整權限
           sudo socat -d -d PTY,raw,echo=0,link=/tmp/xrce_tty PTY,raw,echo=0,link=/tmp/xrce_peer >/dev/null 2>&1 &
           SC=$!
           sleep 0.8
-      
+          
+          # ---- 新增：把 PTY 權限改成可被 runner 使用 ----
+          # 等一小段時間確保裝置已建立
+          sleep 0.2
+          # 若 /tmp/xrce_tty /tmp/xrce_peer 存在就改權限（不會因為不存在而 fail）
+          if [ -e /tmp/xrce_tty ]; then sudo chmod a+rw /tmp/xrce_tty || true; fi
+          if [ -e /tmp/xrce_peer ]; then sudo chmod a+rw /tmp/xrce_peer || true; fi
+          # 或者 chown runner:runner（視你 prefere）
+          # if [ -e /tmp/xrce_tty ]; then sudo chown $USER:$USER /tmp/xrce_tty || true; fi
+          
           echo "== Start XRCE Agent on /tmp/xrce_tty =="
           ./Micro-XRCE-DDS-Agent/build/bin/MicroXRCEAgent serial -d /tmp/xrce_tty -b 115200 -v 4 > artifacts/agent.log 2>&1 &
           AP=$!
           sleep 0.8
-      
+          
           echo "== Tap the Agent side TTY for 3s =="
           timeout 3s cat /tmp/xrce_tty > artifacts/uart.log &
           TAP=$!
           sleep 0.2
-      
+          
           echo "== Inject test line from the 'MCU side' =="
-          echo "XRCE-STUB heartbeat" > /tmp/xrce_peer
-          sleep 0.5
-      
+          # /tmp/xrce_peer 現在應可寫
+          echo "XRCE-STUB heartbeat" > /tmp/xrce_peer || { echo "::error:: cannot write to /tmp/xrce_peer"; ls -l /tmp/xrce_peer || true; exit 5; }
+          sleep 0.2
+          
           wait $TAP || true
-      
+          
           echo "== tails =="
           tail -n 80 artifacts/agent.log || true
           tail -n 80 artifacts/uart.log || true
-      
+          
           if [ ! -s artifacts/uart.log ]; then
             echo "::error:: uart.log empty"
             kill $AP $SC 2>/dev/null || true
             exit 3
           fi
           grep -q "XRCE-STUB heartbeat" artifacts/uart.log || (echo "::error:: heartbeat not found in uart.log"; exit 4)
-      
+          
           kill $AP $SC 2>/dev/null || true
           sleep 0.2
 
