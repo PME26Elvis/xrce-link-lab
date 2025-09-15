@@ -4,10 +4,17 @@ mach create "nrf52-ci-capture"
 machine LoadPlatformDescription @platforms/cpus/nrf52.repl
 mach set "nrf52-ci-capture"
 
-# 由 Robot/CI 注入絕對路徑
+# 由 CI/Robot 注入絕對路徑
 sysbus LoadELF __ELF_PATH__
 
+# 建立 PTY 並接到 UART0
 emulation CreateUartPtyTerminal "pty0"
 connector Connect sysbus.uart0 pty0
-# 在 machine context 中執行 log，確保能找到 sysbus
-log "PTY device path: @{sysbus.uart0.FileName}"
+
+# 明確打印 PTY 路徑（固定格式，方便 grep）
+log "PTY: " + pty0 Path
+
+# 跑一下讓裝置有輸出
+start
+emulation RunFor "3.0"
+pause
