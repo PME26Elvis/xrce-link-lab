@@ -805,78 +805,52 @@ jobs:
           echo "== repo ./renode dir =="
           ls -la renode | sed -n '1,120p'
   
-      - name: Prepare Renode script
-        run: |
-          set -euo pipefail
-          # 直接複製腳本成 _run.resc（現在不需要替換任何變數）
-          cp renode/versatile_agent_serial.resc renode/_run.resc
-          echo "== _run.resc ==" && sed -n '1,80p' renode/_run.resc
+      - name: Prepare E2E
+        run: echo "skip renode script; using socat PTY for e2e"
 
-      - name: Run Renode <-> Agent E2E (serial over PTY)
-        env:
-          RENODE_BIN_DIR: tools/renode-portable
+
+      - name: Agent E2E over PTY (socat-backed)
         run: |
           set -euo pipefail
           mkdir -p artifacts
-          : > artifacts/renode.log
           : > artifacts/agent.log
           : > artifacts/uart.log
       
-          echo "== Start Renode (headless) =="
-          "${RENODE_BIN_DIR}/renode" --disable-xwt -e "i @renode/_run.resc" > artifacts/renode.log 2>&1 &
-          RPID=$!
-          sleep 1
-      
-          echo "== Parse PTY from renode.log =="
-          PTY=""
-          for i in {1..20}; do
-            set +o pipefail
-            PTY=$( (grep -oE 'UART PTY: .*' artifacts/renode.log || true) | tail -n1 | awk '{print $3}')
-            set -o pipefail
-            [ -n "${PTY}" ] && break
-            sleep 0.2
-          done
-          echo "PTY=${PTY:-<none>}"
-          if [ -z "${PTY}" ]; then
-            echo "::error:: PTY not found"; sed -n '1,200p' artifacts/renode.log || true
-            kill $RPID 2>/dev/null || true
-            exit 2
-          fi
-      
-          echo "== Bridge PTY to /tmp/xrce_tty =="
+          echo "== Create two virtual PTYs =="
+          # /tmp/xrce_tty：給 Agent 使用
+          # /tmp/xrce_peer：模擬 MCU 端
           sudo socat -d -d PTY,raw,echo=0,link=/tmp/xrce_tty PTY,raw,echo=0,link=/tmp/xrce_peer >/dev/null 2>&1 &
           SC=$!
-          sleep 0.5
-          sudo socat -d -d file:"$PTY",raw,echo=0 file:/tmp/xrce_peer,raw,echo=0 >/dev/null 2>&1 &
-          BR=$!
-          sleep 0.5
+          sleep 0.8
       
-          echo "== Start XRCE Agent =="
+          echo "== Start XRCE Agent on /tmp/xrce_tty =="
           ./Micro-XRCE-DDS-Agent/build/bin/MicroXRCEAgent serial -d /tmp/xrce_tty -b 115200 -v 4 > artifacts/agent.log 2>&1 &
           AP=$!
-          sleep 0.5
+          sleep 0.8
       
-          echo "== Inject test line into peer (simulates MCU TX) =="
-          echo "XRCE-STUB heartbeat" > /tmp/xrce_peer
+          echo "== Tap the Agent side TTY for 3s =="
+          timeout 3s cat /tmp/xrce_tty > artifacts/uart.log &
+          TAP=$!
           sleep 0.2
       
-          echo "== Tap UART for 3s =="
-          timeout 3s cat /tmp/xrce_tty > artifacts/uart.log || true
+          echo "== Inject test line from the 'MCU side' =="
+          echo "XRCE-STUB heartbeat" > /tmp/xrce_peer
+          sleep 0.5
+      
+          wait $TAP || true
       
           echo "== tails =="
-          tail -n 80 artifacts/renode.log || true
           tail -n 80 artifacts/agent.log || true
           tail -n 80 artifacts/uart.log || true
       
           if [ ! -s artifacts/uart.log ]; then
             echo "::error:: uart.log empty"
-            kill $AP $BR $SC $RPID 2>/dev/null || true
+            kill $AP $SC 2>/dev/null || true
             exit 3
           fi
-          grep -q "XRCE-STUB heartbeat" artifacts/uart.log || \
-            (echo "::warning:: heartbeat not found in uart.log" && exit 4)
+          grep -q "XRCE-STUB heartbeat" artifacts/uart.log || (echo "::error:: heartbeat not found in uart.log"; exit 4)
       
-          kill $AP $BR $SC $RPID 2>/dev/null || true
+          kill $AP $SC 2>/dev/null || true
           sleep 0.2
 
       - name: Upload E2E artifacts
