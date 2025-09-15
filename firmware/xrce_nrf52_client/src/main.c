@@ -1,24 +1,37 @@
+#include <uxr/client/client.h>
+#include "transport_zephyr_serial.h"
 #include <zephyr/kernel.h>
-#include <zephyr/sys/printk.h>
 #include <string.h>
-#include "transport_stub.h"
 
-/* 先做可見的「假心跳」，確保在 Renode 上能跑、能輸出 */
-static const char* HB = "XRCE-STUB heartbeat\n";
+#define CLIENT_KEY     0xAAAA
+#define AGENT_ADDR     "/dev/ttyS0"
 
 void main(void)
 {
-    printk("xrce client (stub) starting...\n");
-    if (!xrce_transport_open()) {
-        printk("xrce transport open failed\n");
+    uxrSerialTransport transport;
+    if(!uxr_init_zephyr_serial_transport(&transport, "UART_0", 115200))
+    {
+        printk("Transport init failed\n");
         return;
     }
 
-    int i = 0;
-    while (1) {
-        char buf[64];
-        int n = snprintk(buf, sizeof(buf), "[%04d] %s", i++, HB);
-        xrce_transport_write((const uint8_t*)buf, (size_t)n);
+    uxr_init_serial_transport(&transport, AGENT_ADDR, 115200);
+
+    uxrSession session;
+    uxr_init_session(&session, &transport.comm, CLIENT_KEY);
+
+    if(!uxr_create_session(&session))
+    {
+        printk("Session creation failed\n");
+        return;
+    }
+
+    printk("XRCE session established\n");
+
+    while(true)
+    {
+        uxr_run_session_time(&session, 1000);
+        printk("heartbeat\n");
         k_sleep(K_MSEC(500));
     }
 }
