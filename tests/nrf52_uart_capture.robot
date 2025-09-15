@@ -18,7 +18,7 @@ Start Renode And Get PTY
 
     # 【最終方案 v6】使用 Renode 官方推薦的 Robot Server 模式，最為穩健
     ${p}=    Start Process    renode    --robot-server-port    9999    --execute    s @${RESC_TMP}    stdout=${RENODE_LOG}    stderr=STDOUT
-    Sleep    3s    # 等待 Renode Robot Server 完全啟動
+    Sleep    5s    # 在 CI 環境中，給予更長的啟動時間
 
     # 透過 Remote Library 執行 Renode 關鍵字
     Run Keyword    Start Emulation
