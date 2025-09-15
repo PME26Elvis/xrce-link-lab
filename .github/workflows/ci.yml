@@ -757,56 +757,96 @@ jobs:
           path: build/zephyr/zephyr.elf
           if-no-files-found: warn
 
-  uxr-session-e2e:
+  uxr-session-e2e-uxrapp:
     runs-on: ubuntu-22.04
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup Zephyr
+  
+      - name: Setup Zephyr (SDK + west)
         uses: zephyrproject-rtos/action-zephyr-setup@v1
         with:
           app-path: app
           toolchains: arm-zephyr-eabi
           sdk-version: 0.16.3
-
-      - name: Build XRCE client
+  
+      - name: Fetch Micro XRCE-DDS Client (fixed tag)
+        run: |
+          set -euo pipefail
+          mkdir -p firmware/xrce_nrf52_uxrapp/third_party
+          rm -rf firmware/xrce_nrf52_uxrapp/third_party/uxrclient
+          git clone --depth 1 --branch v2.4.1 https://github.com/eProsima/micro-xrce-dds-client.git \
+            firmware/xrce_nrf52_uxrapp/third_party/uxrclient
+          test -f firmware/xrce_nrf52_uxrapp/third_party/uxrclient/include/uxr/client/client.h
+  
+      - name: Build XRCE (uxrapp) ELF
         run: |
           set -euo pipefail
           west update
-          west build firmware/xrce_nrf52_client -b nrf52840dk/nrf52840 --pristine always
-
-      - name: Run Renode + Agent E2E
+          west build firmware/xrce_nrf52_uxrapp -b nrf52840dk/nrf52840 --pristine always
+          file build/zephyr/zephyr.elf
+  
+      - name: Install Renode portable + XRCE Agent
         run: |
           set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends git cmake build-essential libasio-dev libtinyxml2-dev wget xz-utils tar
+          # Agent
+          git clone --depth 1 https://github.com/eProsima/Micro-XRCE-DDS-Agent.git
+          cd Micro-XRCE-DDS-Agent && mkdir build && cd build
+          cmake .. && make -j"$(nproc)" && sudo make install && sudo ldconfig
+          cd ../..
+          # Renode portable
           wget -q https://builds.renode.io/renode-latest.linux-portable.tar.gz -O renode.tar.gz
           mkdir renode && tar -xf renode.tar.gz -C renode --strip-components=1
-          export PATH=$PWD/renode:$PATH
-          mkdir -p artifacts/e2e
-
-          # 啟動 Agent
-          (MicroXRCEAgent serial --dev /tmp/xrce_uart -b 115200 > artifacts/e2e/agent.log 2>&1 &)
-          sleep 2
-
-          # 啟動 Renode
-          echo 'using sysbus' > run.resc
-          echo 'mach create "nrf52"' >> run.resc
-          echo 'machine LoadPlatformDescription @platforms/cpus/nrf52.repl' >> run.resc
-          echo 'sysbus LoadELF build/zephyr/zephyr.elf' >> run.resc
-          echo 'emulation CreateUartPtyTerminal "pty0" "/tmp/xrce_uart"' >> run.resc
-          echo 'connector Connect sysbus.uart0 pty0' >> run.resc
-          echo 'start' >> run.resc
-
-          renode -e "i @run.resc" > artifacts/e2e/renode.log 2>&1 &
-          sleep 8
-
-          grep -q "Session created" artifacts/e2e/agent.log || (echo "No session" && exit 1)
-
-      - name: Upload logs
+          echo "$PWD/renode" >> $GITHUB_PATH
+  
+      - name: Run Renode + Agent E2E (serial over PTY)
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/uxr_e2e
+  
+          MicroXRCEAgent serial --dev /tmp/xrce_uart -b 115200 > artifacts/uxr_e2e/agent.log 2>&1 &
+          AG_PID=$!
+          sleep 1
+  
+          # 產生 Renode 腳本，建立相同 PTY，連上 UART0，並跑 10 秒
+          cat > run.resc <<'RS'
+          using sysbus
+          mach create "nrf52"
+          machine LoadPlatformDescription @platforms/cpus/nrf52.repl
+          sysbus LoadELF build/zephyr/zephyr.elf
+          emulation CreateUartPtyTerminal "pty0" "/tmp/xrce_uart"
+          connector Connect sysbus.uart0 pty0
+          start
+          emulation RunFor "10.0"
+          q
+          RS
+          
+          # 3) 跑 Renode
+          renode -e "i @run.resc" > artifacts/uxr_e2e/renode.log 2>&1 || true
+  
+          # 4) 檢查 Agent 日誌是否有 session 建立的訊息
+          echo "---- Agent log tail ----"
+          tail -n 200 artifacts/uxr_e2e/agent.log || true
+  
+          # 寬鬆匹配，避免小版本字眼差異
+          (grep -Ei 'Session (created|established)' artifacts/uxr_e2e/agent.log) || (echo 'No XRCE session in agent.log'; exit 1)
+  
+          # 清理 Agent
+          kill ${AG_PID} 2>/dev/null || true
+          wait ${AG_PID} 2>/dev/null || true
+  
+      - name: Upload E2E artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: uxr-session-e2e-logs
-          path: artifacts/e2e/**
+          name: uxr-session-e2e-uxrapp
+          path: artifacts/uxr_e2e/**
+          if-no-files-found: warn
+
           
   # renode-uart-heartbeat-capture:
   #   # 【新策略】不再依賴其他 job，建立一個完全自給自足的測試環境
