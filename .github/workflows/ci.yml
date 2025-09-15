@@ -165,7 +165,6 @@ jobs:
           app-path: app
           toolchains: arm-zephyr-eabi
           sdk-version: 0.16.3
-          sdk-install-path: ${{ steps.cache-zephyr-sdk.outputs.cache-hit == 'true' && format('{0}/zephyr-sdk-0.16.3', runner.temp) || '' }}
 
       - name: Cache west modules
         uses: actions/cache@v4
@@ -209,22 +208,22 @@ jobs:
             
       - name: Install deps, setup PATH, and run test in one step
         run: |
-         set -euo pipefail
-         sudo apt-get update
-         sudo apt-get install -y --no-install-recommends wget xz-utils tar
-         python3 -m pip install --user --no-cache-dir robotframework
-         RENODE_DIR="$RUNNER_TEMP/renode-portable"
-         mkdir -p "$RENODE_DIR"
-         if [ "${{ steps.cache-renode.outputs.cache-hit }}" != 'true' ]; then
-         echo "Renode cache miss. Downloading..."
-         wget -q https://builds.renode.io/renode-latest.linux-portable.tar.gz -O "$RENODE_DIR/renode.tar.gz"
-         tar -xf "$RENODE_DIR/renode.tar.gz" -C "$RENODE_DIR" --strip-components=1
-         else
-         echo "Renode cache hit."
-         fi
-         export PATH="$RENODE_DIR:$HOME/.local/bin:$PATH"
-         renode --version
-         robot -d artifacts/uart_capture tests/nrf52_uart_capture.robot
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends wget xz-utils tar socat iproute2
+          python3 -m pip install --user --no-cache-dir robotframework
+          RENODE_DIR="$RUNNER_TEMP/renode-portable"
+          mkdir -p "$RENODE_DIR"
+          if [ "${{ steps.cache-renode.outputs.cache-hit }}" != 'true' ]; then
+            echo "Renode cache miss. Downloading..."
+            wget -q https://builds.renode.io/renode-latest.linux-portable.tar.gz -O "$RENODE_DIR/renode.tar.gz"
+            tar -xf "$RENODE_DIR/renode.tar.gz" -C "$RENODE_DIR" --strip-components=1
+          else
+            echo "Renode cache hit."
+          fi
+          export PATH="$RENODE_DIR:$HOME/.local/bin:$PATH"
+          renode --version
+          robot -d artifacts/uart_capture tests/nrf52_uart_capture.robot
          
       - name: Upload UART capture artifacts
         if: always()
