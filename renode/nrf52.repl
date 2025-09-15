@@ -1,0 +1,8 @@
+using sysbus
+
+cpu: ARM.CortexM4 @ sysbus
+    cpuType: "cortex-m4"
+
+sysbus:
+    uart0: UART.PL011 @ sysbus 0x40002000
+        irq -> cpu 5
