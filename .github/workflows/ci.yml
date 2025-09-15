@@ -763,91 +763,85 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # SDK / west（用你已成功的配方）
-      - uses: zephyrproject-rtos/action-zephyr-setup@v1
+      - name: Setup Zephyr (SDK + west)
+        uses: zephyrproject-rtos/action-zephyr-setup@v1
         with:
           app-path: app
           toolchains: arm-zephyr-eabi
           sdk-version: 0.16.3
 
-      - name: Build nRF52 app (ELF/HEX)
+      - name: Build nRF52 demo ELF
         run: |
           set -euo pipefail
           west update
+          # 你已驗證會每 500ms 印 "XRCE-STUB heartbeat" 的那顆
           west build firmware/xrce_nrf52_client -b nrf52840dk/nrf52840 --pristine always
           ls -l build/zephyr/zephyr.elf build/zephyr/zephyr.hex
 
-      # Renode + Robot 所需（快取可保留你既有寫法）
-      - name: Install Renode + Robot deps
+      - name: Install Renode, Agent, socat
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends socat wget xz-utils tar
-          python3 -m pip install --user robotframework robotremoteserver
-          RENODE_DIR="$RUNNER_TEMP/renode-portable"
-          mkdir -p "$RENODE_DIR"
-          wget -q https://builds.renode.io/renode-latest.linux-portable.tar.gz -O "$RENODE_DIR/renode.tar.gz"
-          tar -xf "$RENODE_DIR/renode.tar.gz" -C "$RENODE_DIR" --strip-components=1
-          echo "$RENODE_DIR:$HOME/.local/bin" >> "$GITHUB_PATH"
+          sudo apt-get install -y --no-install-recommends git cmake build-essential libasio-dev libtinyxml2-dev socat wget xz-utils tar
+          # Build Micro XRCE-DDS Agent（與你先前 smoke 線一致）
+          git clone --depth 1 https://github.com/eProsima/Micro-XRCE-DDS-Agent.git
+          cd Micro-XRCE-DDS-Agent && mkdir build && cd build
+          cmake .. && make -j"$(nproc)" && sudo make install && sudo ldconfig
+          cd ../..
+          # Renode portable
+          wget -q https://builds.renode.io/renode-latest.linux-portable.tar.gz -O renode.tar.gz
+          mkdir renode && tar -xf renode.tar.gz -C renode --strip-components=1
+          echo "$PWD/renode" >> "$GITHUB_PATH"
 
-      - name: Run Renode serial↔Agent E2E
-        env:
-          ELF_ABS: ${{ github.workspace }}/build/zephyr/zephyr.elf
+      - name: Run Renode <-> Agent E2E (serial over PTY)
         run: |
           set -euo pipefail
-          # 1) 啟 Renode Robot Server
+          mkdir -p artifacts
+
+          # 1) 產生 .resc（注入 ELF 路徑）
+          sed "s|__ELF_PATH__|$GITHUB_WORKSPACE/build/zephyr/zephyr.elf|g" \
+            renode/nrf52_agent_serial.resc > renode/_run.resc
+
+          # 2) 啟 Renode（headless）
           renode --version
-          renode --disable-xwt --robot-server-port 9999 > renode_e2e.log 2>&1 &
+          renode -e "i @renode/_run.resc" > artifacts/renode.log 2>&1 &
           RPID=$!
-          sleep 6
+          sleep 2
 
-          # 2) 產生臨時 .resc（注入 ELF 路徑），並由 Robot Server 載入
-          RESC_TMP=renode/_nrf52_agent_serial.resc
-          mkdir -p renode artifacts
-          sed "s|__ELF_PATH__|${ELF_ABS}|g" renode/nrf52_agent_serial.resc > "$RESC_TMP"
-
-          # 3) 用 rconsole 遠端操作（比 RobotFramework 更輕量）
-          rconsole <<'EOF'
-          include @$RESC_TMP
-          start
-          EOF
-
-          # 4) 從 Renode log 抓 PTY 路徑（最多重試幾次）
+          # 3) 解析 PTY 路徑（最多重試 10 次）
+          PTY=""
           for i in {1..10}; do
-            PTY=$(grep -oE 'UART PTY: .*' renode_e2e.log | tail -n1 | awk '{print $3}')
+            PTY=$(grep -oE 'UART PTY: .*' artifacts/renode.log | tail -n1 | awk '{print $3}')
             [ -n "$PTY" ] && break
             sleep 1
           done
+          echo "PTY=${PTY:-<none>}"
           if [ -z "$PTY" ]; then
-            echo "::error:: failed to detect PTY from renode_e2e.log"
-            tail -n +1 renode_e2e.log
+            echo "::error:: PTY not found in artifacts/renode.log"
+            tail -n +1 artifacts/renode.log || true
             exit 2
           fi
-          echo "PTY=$PTY"
 
-          # 5) 綁定固定裝置名給 Agent 使用
-          sudo socat -d -d PTY,raw,echo=0,link=/tmp/xrce_tty PTY,raw,echo=0,link=/tmp/xrce_peer &
+          # 4) 用 socat 把 PTY 鎖成固定裝置路徑 /tmp/xrce_tty
+          sudo socat -d -d PTY,raw,echo=0,link=/tmp/xrce_tty PTY,raw,echo=0,link=/tmp/xrce_peer >/dev/null 2>&1 &
           SC=$!
           sleep 1
-          # 接上 Renode 的端：把 Renode 的 $PTY 和 /tmp/xrce_peer 互通
-          sudo socat -d -d file:$PTY,raw,echo=0 file:/tmp/xrce_peer,raw,echo=0 &
+          sudo socat -d -d file:$PTY,raw,echo=0 file:/tmp/xrce_peer,raw,echo=0 >/dev/null 2>&1 &
           BR=$!
           sleep 1
 
-          # 6) 起 Agent（serial）
-          MicroXRCEAgent serial -d /tmp/xrce_tty -b 115200 -v 4 > agent_e2e.log 2>&1 &
+          # 5) 啟 XRCE Agent（serial:/tmp/xrce_tty）
+          MicroXRCEAgent serial -d /tmp/xrce_tty -b 115200 -v 4 > artifacts/agent.log 2>&1 &
           AP=$!
-          sleep 0.8
+          sleep 1
 
-          # 7) 讀取 3s UART 輸出作為證據
-          timeout 3s cat /tmp/xrce_tty > uart_e2e.log || true
+          # 6) 擷取 3 秒 UART 輸出
+          timeout 3s cat /tmp/xrce_tty > artifacts/uart.log || true
 
-          # 基本斷言（非空 + 心跳字樣）
-          test -s uart_e2e.log || (echo "::error:: uart log empty"; exit 3)
-          if ! grep -q "XRCE-STUB heartbeat" uart_e2e.log; then
-            echo "::warning:: heartbeat string not found; printing last lines:"
-            tail -n 50 uart_e2e.log || true
-          fi
+          # 7) 最低限度的斷言：uart.log 有內容；心跳字樣若缺失只告警
+          test -s artifacts/uart.log || (echo "::error:: uart.log empty"; exit 3)
+          grep -q "XRCE-STUB heartbeat" artifacts/uart.log || \
+            (echo "::warning:: heartbeat not found, printing tail"; tail -n 80 artifacts/uart.log || true)
 
           # 收尾
           kill $AP $BR $SC $RPID 2>/dev/null || true
@@ -861,9 +855,10 @@ jobs:
           if-no-files-found: warn
           path: |
             build/zephyr/zephyr.elf
-            renode_e2e.log
-            agent_e2e.log
-            uart_e2e.log
+            build/zephyr/zephyr.hex
+            artifacts/renode.log
+            artifacts/agent.log
+            artifacts/uart.log
             
   demo-asciinema-ci:
     runs-on: ubuntu-22.04
@@ -882,9 +877,7 @@ jobs:
         run: |
           set -euo pipefail
           west update
-          # 若你想用另一顆 app，這行改成 firmware/xrce_nrf52_uxrapp 也行
           west build firmware/xrce_nrf52_client -b nrf52840dk/nrf52840 --pristine always
-          ls -l build/zephyr/zephyr.elf build/zephyr/zephyr.hex
 
       - name: Install Renode, Agent, socat, asciinema
         run: |
@@ -893,12 +886,10 @@ jobs:
           sudo apt-get install -y --no-install-recommends git cmake build-essential libasio-dev libtinyxml2-dev socat wget xz-utils tar python3-pip
           python3 -m pip install --user asciinema
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          # Build Micro XRCE-DDS Agent
           git clone --depth 1 https://github.com/eProsima/Micro-XRCE-DDS-Agent.git
           cd Micro-XRCE-DDS-Agent && mkdir build && cd build
           cmake .. && make -j"$(nproc)" && sudo make install && sudo ldconfig
           cd ../..
-          # Renode portable
           wget -q https://builds.renode.io/renode-latest.linux-portable.tar.gz -O renode.tar.gz
           mkdir renode && tar -xf renode.tar.gz -C renode --strip-components=1
           echo "$PWD/renode" >> "$GITHUB_PATH"
@@ -907,46 +898,30 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p renode artifacts
-          cat > renode/run.resc <<'RS'
-          using sysbus
-          mach create "nrf52-demo"
-          machine LoadPlatformDescription @platforms/cpus/nrf52.repl
-          sysbus LoadELF __ELF_PATH__
-          emulation CreateUartPtyTerminal "pty0"
-          connector Connect sysbus.uart0 pty0
-          log "UART PTY: @{sysbus.uart0.FileName}"
-          start
-          emulation RunFor "8.0"
-          q
-          RS
-          # inject absolute ELF path
-          sed -i "s|__ELF_PATH__|$GITHUB_WORKSPACE/build/zephyr/zephyr.elf|g" renode/run.resc
+          sed "s|__ELF_PATH__|$GITHUB_WORKSPACE/build/zephyr/zephyr.elf|g" \
+            renode/nrf52_agent_serial.resc > renode/_run.resc
 
-      - name: Run demo and record (asciinema)
+      - name: Record demo (asciinema)
         run: |
           set -euo pipefail
-          # helper script to run whole demo and print the key outputs nicely
           cat > demo.sh <<'SH'
           #!/usr/bin/env bash
           set -euo pipefail
-          echo "== Start Renode (headless) =="
-          renode -e "i @renode/run.resc" > artifacts/renode.log 2>&1 &
+          echo "== Start Renode =="
+          renode -e "i @renode/_run.resc" > artifacts/renode.log 2>&1 &
           RPID=$!
           sleep 2
           
-          # Extract PTY from Renode log (retry a few times)
+          PTY=""
           for i in {1..10}; do
             PTY=$(grep -oE 'UART PTY: .*' artifacts/renode.log | tail -n1 | awk '{print $3}')
             [ -n "${PTY:-}" ] && break
             sleep 1
           done
-          echo "PTY: ${PTY:-<none>}"
-          if [ -z "${PTY:-}" ]; then
-            echo "ERROR: PTY not found in artifacts/renode.log"
-            exit 2
-          fi
+          echo "PTY=${PTY:-<none>}"
+          [ -n "${PTY:-}" ]
           
-          echo "== Bridge PTY to fixed /tmp/xrce_tty =="
+          echo "== Bridge PTY to /tmp/xrce_tty =="
           sudo socat -d -d PTY,raw,echo=0,link=/tmp/xrce_tty PTY,raw,echo=0,link=/tmp/xrce_peer >/dev/null 2>&1 &
           SC=$!
           sleep 1
@@ -954,7 +929,7 @@ jobs:
           BR=$!
           sleep 1
           
-          echo "== Start XRCE Agent (serial:/tmp/xrce_tty) =="
+          echo "== Start Agent =="
           MicroXRCEAgent serial -d /tmp/xrce_tty -b 115200 -v 4 > artifacts/agent.log 2>&1 &
           AP=$!
           sleep 1
@@ -962,23 +937,19 @@ jobs:
           echo "== Tap UART for 3s =="
           timeout 3s cat /tmp/xrce_tty > artifacts/uart.log || true
           tail -n +1 artifacts/uart.log || true
-          
-          echo "== Tail Agent log =="
-          tail -n 50 artifacts/agent.log || true
+          tail -n 40 artifacts/agent.log || true
           
           echo "== Stop all =="
           kill $AP $BR $SC $RPID 2>/dev/null || true
           sleep 1
-          
-          echo "== Done. Check artifacts/*.log =="
           SH
           chmod +x demo.sh
-          # Record the whole demo as Asciinema cast (non-interactive)
           asciinema rec -q -c "./demo.sh" artifacts/demo.cast
-          # Minimal sanity:
+          # 簡單 sanity
           test -s artifacts/renode.log
           test -s artifacts/agent.log
           test -s artifacts/uart.log
+          test -s artifacts/demo.cast
 
       - name: Upload demo artifacts
         if: always()
@@ -989,8 +960,7 @@ jobs:
           path: |
             build/zephyr/zephyr.elf
             build/zephyr/zephyr.hex
-            artifacts/demo.cast
             artifacts/renode.log
             artifacts/agent.log
             artifacts/uart.log
-
+            artifacts/demo.cast
