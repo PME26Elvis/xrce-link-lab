@@ -788,10 +788,14 @@ jobs:
           cmake -S Micro-XRCE-DDS-Agent -B Micro-XRCE-DDS-Agent/build
           cmake --build Micro-XRCE-DDS-Agent/build -j"$(nproc)"
           # Renode portable（放在 repo 下的 ./renode）
+          rm -rf renode   # 保證舊目錄清掉
+          mkdir renode
           wget -q https://builds.renode.io/renode-latest.linux-portable.tar.gz -O renode.tar.gz
-          mkdir renode && tar -xf renode.tar.gz -C renode --strip-components=1
+          tar -xf renode.tar.gz -C renode --strip-components=1
+          
+          ls -l renode    # Debug: 確認裡面真的有 'renode' 可執行檔
           ./renode/renode --version
-  
+
       - name: Run Renode <-> Agent E2E (serial over PTY)
         run: |
           set -euo pipefail
