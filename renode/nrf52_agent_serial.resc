@@ -2,7 +2,7 @@ using sysbus
 
 mach create "nrf52-ci-agent"
 # 由 CI 注入 nrf52.repl 的「完整檔案路徑」
-machine LoadPlatformDescription @__PLATFILE__
+machine LoadPlatformDescription @renode/nrf52.repl
 
 # 由 CI 注入 ELF 路徑
 sysbus LoadELF __ELF_PATH__
