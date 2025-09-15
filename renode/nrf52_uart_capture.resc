@@ -7,10 +7,12 @@ mach set "nrf52-ci-capture"
 # 由 CI/Robot 注入 ELF 路徑
 sysbus LoadELF __ELF_PATH__
 
-# 直接建立固定路徑的 PTY，避免日誌解析不穩
-# 這行會在宿主建立 /tmp/xrce_uart 並命名此端子為 "term"
-emulation CreateUartPtyTerminal "term" "/tmp/xrce_uart"
+# 改用 TCP server terminal，避免不同 Renode 版在 PTY 上的差異
+# 這會在 127.0.0.1:34567 對外提供 UART 流
+emulation CreateUartTcpServerTerminal "term" 34567
 connector Connect sysbus.uart0 term
+
+log "UART TCP: 127.0.0.1:34567"
 
 # 讓韌體有時間輸出字串
 start
