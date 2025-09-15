@@ -1,0 +1,19 @@
+using sysbus
+
+mach create "nrf52-e2e"
+machine LoadPlatformDescription @platforms/cpus/nrf52.repl
+
+# 由 CI 用 sed 注入絕對路徑
+sysbus LoadELF __ELF_PATH__
+
+# 建立一個 PTY，並把 UART0 綁上去
+emulation CreateUartPtyTerminal "pty0"
+connector Connect sysbus.uart0 pty0
+
+# 印出 PTY 路徑，CI 會從 renode.log 解析這一行
+log "UART PTY: @{sysbus.uart0.FileName}"
+
+# 跑固定時間，讓 Agent 有機會互動／抓輸出
+start
+emulation RunFor "8.0"
+q
