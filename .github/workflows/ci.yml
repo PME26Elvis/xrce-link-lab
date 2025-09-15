@@ -797,7 +797,12 @@ jobs:
           echo "== Renode files (depth 2) =="
           find renode -maxdepth 2 -type f | sort | sed -n '1,200p'
           ./renode/renode --version
-  
+          
+      - name: Show renode dir (sanity)
+        run: |
+          set -euo pipefail
+          ls -la renode || true
+
       - name: Prepare Renode script
         run: |
           set -euo pipefail
