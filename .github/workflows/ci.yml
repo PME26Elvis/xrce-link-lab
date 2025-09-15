@@ -212,7 +212,7 @@ jobs:
           # --- 1. Install Dependencies ---
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends wget xz-utils tar
-          python3 -m pip install --user --no-cache-dir robotframework robotframework-sshlibrary robotframework-remoteserver
+          python3 -m pip install --user --no-cache-dir robotframework robotframework-sshlibrary
           # --- 2. Setup PATH for this step ---
           RENODE_DIR="$RUNNER_TEMP/renode-portable"
           mkdir -p "$RENODE_DIR"
