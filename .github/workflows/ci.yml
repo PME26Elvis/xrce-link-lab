@@ -206,31 +206,26 @@ jobs:
           key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }} # 可建立一個 requirements.txt
           restore-keys: |
             ${{ runner.os }}-pip-
+            
       - name: Install deps, setup PATH, and run test in one step
         run: |
-          set -euo pipefail
-          # --- 1. Install Dependencies ---
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends wget xz-utils tar
-          python3 -m pip install --user --no-cache-dir robotframework robotframework-sshlibrary
-          # --- 2. Setup PATH for this step ---
-          RENODE_DIR="$RUNNER_TEMP/renode-portable"
-          mkdir -p "$RENODE_DIR"
-          
-          # 如果快取沒有命中，才下載 Renode
-          if [ "${{ steps.cache-renode.outputs.cache-hit }}" != 'true' ]; then
-            echo "Renode cache miss. Downloading..."
-            wget -q https://builds.renode.io/renode-latest.linux-portable.tar.gz -O "$RENODE_DIR/renode.tar.gz"
-            tar -xf "$RENODE_DIR/renode.tar.gz" -C "$RENODE_DIR" --strip-components=1
-          else
-            echo "Renode cache hit."
-          fi
-          
-          # Add Renode and pip user bin to PATH for the rest of this script
-          export PATH="$RENODE_DIR:$HOME/.local/bin:$PATH"
-          renode --version
-          # --- 3. Run the test ---
-          robot -d artifacts/uart_capture tests/nrf52_uart_capture.robot
+         set -euo pipefail
+         sudo apt-get update
+         sudo apt-get install -y --no-install-recommends wget xz-utils tar
+         python3 -m pip install --user --no-cache-dir robotframework
+         RENODE_DIR="$RUNNER_TEMP/renode-portable"
+         mkdir -p "$RENODE_DIR"
+         if [ "${{ steps.cache-renode.outputs.cache-hit }}" != 'true' ]; then
+         echo "Renode cache miss. Downloading..."
+         wget -q https://builds.renode.io/renode-latest.linux-portable.tar.gz -O "$RENODE_DIR/renode.tar.gz"
+         tar -xf "$RENODE_DIR/renode.tar.gz" -C "$RENODE_DIR" --strip-components=1
+         else
+         echo "Renode cache hit."
+         fi
+         export PATH="$RENODE_DIR:$HOME/.local/bin:$PATH"
+         renode --version
+         robot -d artifacts/uart_capture tests/nrf52_uart_capture.robot
+         
       - name: Upload UART capture artifacts
         if: always()
         uses: actions/upload-artifact@v4
