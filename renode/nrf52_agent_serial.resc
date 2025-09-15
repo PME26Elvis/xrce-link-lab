@@ -1,16 +1,17 @@
 using sysbus
 
 mach create "nrf52-ci-agent"
-machine LoadPlatformDescription @platforms/cpus/nrf52.repl
+# 由 CI 注入 platforms 目錄的絕對路徑
+machine LoadPlatformDescription @__PLATFORMS__/cpus/nrf52.repl
 
-# 由 CI 用 sed 注入絕對 ELF 路徑
+# 由 CI 注入 ELF 路徑
 sysbus LoadELF __ELF_PATH__
 
-# 建立一個 PTY，並把 UART0 綁上去
+# 綁定 UART → PTY
 emulation CreateUartPtyTerminal "pty0"
 connector Connect sysbus.uart0 pty0
 
-# 讓 CI 從 log 抓到 PTY
+# 記錄 PTY 路徑
 log "UART PTY: @{sysbus.uart0.FileName}"
 
 start
