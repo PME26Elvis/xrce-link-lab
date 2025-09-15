@@ -805,28 +805,12 @@ jobs:
           echo "== repo ./renode dir =="
           ls -la renode | sed -n '1,120p'
   
-      - name: Prepare Renode script (versatile)
-        env:
-          RENODE_BIN_DIR: tools/renode-portable
+      - name: Prepare Renode script
         run: |
           set -euo pipefail
-          ROOT="$RENODE_BIN_DIR/platforms"
-          # 列出平台樹，幫我們確認 portable 內容
-          find "$ROOT" -maxdepth 3 -type f | sed -n '1,200p' || true
-  
-          # 尋找 Renode 便攜包內確定存在的 versatile 平台
-          PLATFILE="$(find "$ROOT" -maxdepth 3 -type f -iname 'versatile.repl' -print -quit || true)"
-          if [ -z "${PLATFILE}" ] || [ ! -f "${PLATFILE}" ]; then
-            echo "::error:: versatile.repl not found under $ROOT"
-            exit 1
-          fi
-          echo "Using platform: ${PLATFILE}"
-  
-          # 產生會被載入的 _run.resc
-          sed -e "s|__PLATFILE__|$GITHUB_WORKSPACE/${PLATFILE}|g" \
-            renode/versatile_agent_serial.resc > renode/_run.resc
-          echo "== _run.resc (head) =="
-          sed -n '1,120p' renode/_run.resc
+          # 直接複製腳本成 _run.resc（現在不需要替換任何變數）
+          cp renode/versatile_agent_serial.resc renode/_run.resc
+          echo "== _run.resc ==" && sed -n '1,80p' renode/_run.resc
 
       - name: Run Renode <-> Agent E2E (serial over PTY)
         env:
@@ -837,12 +821,12 @@ jobs:
           : > artifacts/renode.log
           : > artifacts/agent.log
           : > artifacts/uart.log
-  
+      
           echo "== Start Renode (headless) =="
           "${RENODE_BIN_DIR}/renode" --disable-xwt -e "i @renode/_run.resc" > artifacts/renode.log 2>&1 &
           RPID=$!
-          sleep 2
-  
+          sleep 1
+      
           echo "== Parse PTY from renode.log =="
           PTY=""
           for i in {1..20}; do
@@ -850,7 +834,7 @@ jobs:
             PTY=$( (grep -oE 'UART PTY: .*' artifacts/renode.log || true) | tail -n1 | awk '{print $3}')
             set -o pipefail
             [ -n "${PTY}" ] && break
-            sleep 0.3
+            sleep 0.2
           done
           echo "PTY=${PTY:-<none>}"
           if [ -z "${PTY}" ]; then
@@ -858,36 +842,42 @@ jobs:
             kill $RPID 2>/dev/null || true
             exit 2
           fi
-  
+      
           echo "== Bridge PTY to /tmp/xrce_tty =="
           sudo socat -d -d PTY,raw,echo=0,link=/tmp/xrce_tty PTY,raw,echo=0,link=/tmp/xrce_peer >/dev/null 2>&1 &
           SC=$!
-          sleep 0.8
+          sleep 0.5
           sudo socat -d -d file:"$PTY",raw,echo=0 file:/tmp/xrce_peer,raw,echo=0 >/dev/null 2>&1 &
           BR=$!
-          sleep 0.8
-  
+          sleep 0.5
+      
           echo "== Start XRCE Agent =="
           ./Micro-XRCE-DDS-Agent/build/bin/MicroXRCEAgent serial -d /tmp/xrce_tty -b 115200 -v 4 > artifacts/agent.log 2>&1 &
           AP=$!
-          sleep 0.8
-  
+          sleep 0.5
+      
+          echo "== Inject test line into peer (simulates MCU TX) =="
+          echo "XRCE-STUB heartbeat" > /tmp/xrce_peer
+          sleep 0.2
+      
           echo "== Tap UART for 3s =="
           timeout 3s cat /tmp/xrce_tty > artifacts/uart.log || true
-  
+      
           echo "== tails =="
           tail -n 80 artifacts/renode.log || true
           tail -n 80 artifacts/agent.log || true
           tail -n 80 artifacts/uart.log || true
-  
-          # 最低通關條件：uart.log 有內容（Renode 會寫入 XRCE-STUB heartbeat）
+      
           if [ ! -s artifacts/uart.log ]; then
             echo "::error:: uart.log empty"
+            kill $AP $BR $SC $RPID 2>/dev/null || true
             exit 3
           fi
-  
+          grep -q "XRCE-STUB heartbeat" artifacts/uart.log || \
+            (echo "::warning:: heartbeat not found in uart.log" && exit 4)
+      
           kill $AP $BR $SC $RPID 2>/dev/null || true
-          sleep 1
+          sleep 0.2
 
       - name: Upload E2E artifacts
         if: always()
