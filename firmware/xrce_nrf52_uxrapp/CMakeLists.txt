@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.20.0)
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(xrce_nrf52_uxrapp)
 
-# 先放最小 app 檔案（永遠存在）
+# 永遠編的最小 app
 target_sources(app PRIVATE
   src/main.c
 )
@@ -20,13 +20,10 @@ if (EXISTS ${UXRCLIENT_DIR}/include/uxr/client/client.h)
     src/transport_zephyr_serial.c
   )
 
-  # 自動收集 uxrclient 需要的 .c（core / util / transport/serial）
+  # 精確收集 uxrclient 必要 .c
   file(GLOB_RECURSE UXR_CORE_C   ${UXRCLIENT_DIR}/src/c/core/*.c)
   file(GLOB         UXR_UTIL_C   ${UXRCLIENT_DIR}/src/c/util/*.c)
   file(GLOB         UXR_SERIAL_C ${UXRCLIENT_DIR}/src/c/transport/serial/*.c)
-
-  # 排除不需要的平台傳輸（例如 tcp、udp、custom 等非 serial）
-  list(FILTER UXR_CORE_C EXCLUDE REGEX "/transport/[^/]+/(?!serial)")
 
   target_sources(app PRIVATE
     ${UXR_CORE_C}
