@@ -93,6 +93,7 @@ jobs:
             build/zephyr/zephyr.hex
             build/zephyr/.config
             build/zephyr/zephyr.dts
+            
   zephyr-build-and-run-xrce-stub:
     runs-on: ubuntu-22.04
     defaults:
@@ -142,102 +143,7 @@ jobs:
             build/zephyr/zephyr.dts
           if-no-files-found: warn
 
-  renode-uart-heartbeat-capture:
-    # 【新策略】不再依賴其他 job，建立一個完全自給自足的測試環境
-    runs-on: ubuntu-22.04
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@v4
 
-      # --- 1. 建置韌體 (Build Firmware) ---
-      - name: Cache Zephyr SDK
-        id: cache-zephyr-sdk
-        uses: actions/cache@v4
-        with:
-          path: ${{ runner.temp }}/zephyr-sdk-0.16.3
-          key: zephyr-sdk-0.16.3-${{ runner.os }}
-
-      - name: Setup Zephyr for local build
-        uses: zephyrproject-rtos/action-zephyr-setup@v1
-        with:
-          app-path: app
-          toolchains: arm-zephyr-eabi
-          sdk-version: 0.16.3
-
-      - name: Cache west modules
-        uses: actions/cache@v4
-        with:
-          path: |
-            bootloader
-            modules
-            tools
-            zephyr
-          key: ${{ runner.os }}-west-${{ hashFiles('app/west.yml') }}
-
-      - name: Build XRCE stub app locally
-        run: |
-          set -euo pipefail
-          west update
-          # 我們需要的是 xrce_nrf52_client 韌體
-          west build firmware/xrce_nrf52_client -b nrf52840dk/nrf52840 --pristine always
-
-      - name: Verify built ELF
-        run: |
-          set -euo pipefail
-          echo "Verifying ELF file..."
-          ls -l build/zephyr/
-          test -f build/zephyr/zephyr.elf
-
-      # --- 2. 執行測試 (Run Test) ---
-      - name: Cache Renode portable
-        id: cache-renode
-        uses: actions/cache@v4
-        with:
-          path: ${{ runner.temp }}/renode-portable
-          key: renode-portable-v1-${{ runner.os }}
-
-      - name: Cache pip packages
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/pip # Robot Framework 的依賴相對固定
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }} # 可建立一個 requirements.txt
-          restore-keys: |
-            ${{ runner.os }}-pip-
-            
-      - name: Install deps, setup PATH, and run test in one step
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends wget xz-utils tar socat iproute2
-          python3 -m pip install --user --no-cache-dir robotframework
-          RENODE_DIR="$RUNNER_TEMP/renode-portable"
-          mkdir -p "$RENODE_DIR"
-          if [ "${{ steps.cache-renode.outputs.cache-hit }}" != 'true' ]; then
-            echo "Renode cache miss. Downloading..."
-            wget -q https://builds.renode.io/renode-latest.linux-portable.tar.gz -O "$RENODE_DIR/renode.tar.gz"
-            tar -xf "$RENODE_DIR/renode.tar.gz" -C "$RENODE_DIR" --strip-components=1
-          else
-            echo "Renode cache hit."
-          fi
-          export PATH="$RENODE_DIR:$HOME/.local/bin:$PATH"
-          renode --version
-          robot -d artifacts/uart_capture tests/nrf52_uart_capture.robot
-         
-      - name: Upload UART capture artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: renode-uart-capture-logs-v2
-          path: |
-            artifacts/uart_capture/**
-            uart_capture.renode.log
-            uart_capture.device.log
-          if-no-files-found: warn
-
-  # --- 其他 smoke tests (此處省略，但可以比照上面的模式加入快取) ---
-  # ... renode-smoke, agent-udp-smoke, etc. ...
 
   # 保持一個 E2E smoke test 作為範例
   renode-agent-serial-e2e-smoke:
@@ -827,6 +733,29 @@ jobs:
           name: xrce-agent-smoke
           path: agent.log
           if-no-files-found: warn
+  zephyr-build-uxrapp:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Zephyr (SDK + west)
+        uses: zephyrproject-rtos/action-zephyr-setup@v1
+        with:
+          app-path: app
+          toolchains: arm-zephyr-eabi
+          sdk-version: 0.16.3
+      - name: Build xrce_nrf52_uxrapp (nRF52840)
+        run: |
+          set -euo pipefail
+          west update
+          west build firmware/xrce_nrf52_uxrapp -b nrf52840dk/nrf52840 --pristine always
+          file build/zephyr/zephyr.elf
+      - name: Upload ELF
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: uxrapp-elf
+          path: build/zephyr/zephyr.elf
+          if-no-files-found: warn
 
   uxr-session-e2e:
     runs-on: ubuntu-22.04
@@ -878,3 +807,100 @@ jobs:
         with:
           name: uxr-session-e2e-logs
           path: artifacts/e2e/**
+          
+  # renode-uart-heartbeat-capture:
+  #   # 【新策略】不再依賴其他 job，建立一個完全自給自足的測試環境
+  #   runs-on: ubuntu-22.04
+  #   defaults:
+  #     run:
+  #       shell: bash
+  #   steps:
+  #     - uses: actions/checkout@v4
+
+  #     # --- 1. 建置韌體 (Build Firmware) ---
+  #     - name: Cache Zephyr SDK
+  #       id: cache-zephyr-sdk
+  #       uses: actions/cache@v4
+  #       with:
+  #         path: ${{ runner.temp }}/zephyr-sdk-0.16.3
+  #         key: zephyr-sdk-0.16.3-${{ runner.os }}
+
+  #     - name: Setup Zephyr for local build
+  #       uses: zephyrproject-rtos/action-zephyr-setup@v1
+  #       with:
+  #         app-path: app
+  #         toolchains: arm-zephyr-eabi
+  #         sdk-version: 0.16.3
+
+  #     - name: Cache west modules
+  #       uses: actions/cache@v4
+  #       with:
+  #         path: |
+  #           bootloader
+  #           modules
+  #           tools
+  #           zephyr
+  #         key: ${{ runner.os }}-west-${{ hashFiles('app/west.yml') }}
+
+  #     - name: Build XRCE stub app locally
+  #       run: |
+  #         set -euo pipefail
+  #         west update
+  #         # 我們需要的是 xrce_nrf52_client 韌體
+  #         west build firmware/xrce_nrf52_client -b nrf52840dk/nrf52840 --pristine always
+
+  #     - name: Verify built ELF
+  #       run: |
+  #         set -euo pipefail
+  #         echo "Verifying ELF file..."
+  #         ls -l build/zephyr/
+  #         test -f build/zephyr/zephyr.elf
+
+  #     # --- 2. 執行測試 (Run Test) ---
+  #     - name: Cache Renode portable
+  #       id: cache-renode
+  #       uses: actions/cache@v4
+  #       with:
+  #         path: ${{ runner.temp }}/renode-portable
+  #         key: renode-portable-v1-${{ runner.os }}
+
+  #     - name: Cache pip packages
+  #       uses: actions/cache@v4
+  #       with:
+  #         path: ~/.cache/pip # Robot Framework 的依賴相對固定
+  #         key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }} # 可建立一個 requirements.txt
+  #         restore-keys: |
+  #           ${{ runner.os }}-pip-
+            
+  #     - name: Install deps, setup PATH, and run test in one step
+  #       run: |
+  #         set -euo pipefail
+  #         sudo apt-get update
+  #         sudo apt-get install -y --no-install-recommends wget xz-utils tar socat iproute2
+  #         python3 -m pip install --user --no-cache-dir robotframework
+  #         RENODE_DIR="$RUNNER_TEMP/renode-portable"
+  #         mkdir -p "$RENODE_DIR"
+  #         if [ "${{ steps.cache-renode.outputs.cache-hit }}" != 'true' ]; then
+  #           echo "Renode cache miss. Downloading..."
+  #           wget -q https://builds.renode.io/renode-latest.linux-portable.tar.gz -O "$RENODE_DIR/renode.tar.gz"
+  #           tar -xf "$RENODE_DIR/renode.tar.gz" -C "$RENODE_DIR" --strip-components=1
+  #         else
+  #           echo "Renode cache hit."
+  #         fi
+  #         export PATH="$RENODE_DIR:$HOME/.local/bin:$PATH"
+  #         renode --version
+  #         robot -d artifacts/uart_capture tests/nrf52_uart_capture.robot
+         
+  #     - name: Upload UART capture artifacts
+  #       if: always()
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: renode-uart-capture-logs-v2
+  #         path: |
+  #           artifacts/uart_capture/**
+  #           uart_capture.renode.log
+  #           uart_capture.device.log
+  #         if-no-files-found: warn
+
+  # # --- 其他 smoke tests (此處省略，但可以比照上面的模式加入快取) ---
+  # # ... renode-smoke, agent-udp-smoke, etc. ...
