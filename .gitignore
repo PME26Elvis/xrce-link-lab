@@ -1,0 +1,22 @@
+# colcon / ROS 2 build artifacts
+build/
+install/
+log/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Bags / large outputs
+*.db3
+rosbag2_*
+
+# Microros src vendored (we fetch via ros2.repos instead)
+eProsima/
+uros/
+ros2/
