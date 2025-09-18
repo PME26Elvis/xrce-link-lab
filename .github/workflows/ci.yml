@@ -2,9 +2,14 @@ name: CI
 
 on:
   push:
-    branches: [ "main" ] # 僅在 main 分支 push 時觸發，避免與 ci.yml 衝突
+    branches: [ "main" ] 
+    paths-ignore:
+      - 'phase2_ros2_ws/**'
+      - 'phase2/**'
   pull_request:
-
+    paths-ignore:
+      - 'phase2_ros2_ws/**'
+      - 'phase2/**'
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
