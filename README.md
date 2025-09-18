@@ -28,6 +28,14 @@ This repository contains a **minimal, reproducible** Phase 2 demo that connects 
 
 ---
 
+
+## Screenshots
+
+![CI Green](phase2_ros2_ws/src/xrce_link_demo/ci-green.png)
+
+![Phase 2 Demo](phase2_ros2_ws/src/xrce_link_demo/phase2-demo.png)
+
+
 ## Prerequisites
 
 - Ubuntu **22.04** with **ROS 2 Humble** installed (`/opt/ros/humble` present).
