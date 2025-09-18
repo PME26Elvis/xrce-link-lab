@@ -172,5 +172,3 @@ ros2 run xrce_link_demo jitter
 Apache-2.0 for original work here. Third-party projects fetched via `vcs import` or CI retain their original licenses.
 
 ---
-
-想再精簡或改用 `docs/` 放圖都沒問題；你把這一版貼上去就會同時把兩階段交代清楚，且 Phase 2 的存在與「不影響 CI」的理由也一目了然。
