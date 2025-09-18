@@ -135,22 +135,6 @@ Expected:
 
 ---
 
-## Verify & collect metrics
-
-- Frequency: `ros2 topic hz /mcu/heartbeat`
-- Inter-arrival jitter: `ros2 run xrce_link_demo jitter`
-- Graph view (optional): `ros2 run rqt_graph rqt_graph`
-- Bag (optional): `ros2 bag record /mcu/heartbeat -o phase2_demo_bag`
-
-Screenshots to include in a report:
-1. Agent `-v6` log showing session + writes.
-2. Publisher `Sent: N` output.
-3. `ros2 topic echo /mcu/heartbeat` and `hz` output.
-4. `jitter` summary line (avg/std/p90).
-5. (Optional) rqt_graph graph.
-
----
-
 ## Troubleshooting
 
 **No data on `/std_msgs_msg_Int32`**  
